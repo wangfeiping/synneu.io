@@ -1,0 +1,51 @@
+name: zeroclaw_app
+description: "ZeroClaw AI 驱动的新闻采集 App，集成 WebView 自动化浏览与 ZeroClaw Agent。"
+publish_to: 'none'
+
+version: 1.0.0+1
+
+environment:
+  sdk: ^3.9.2
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+  cupertino_icons: ^1.0.8
+
+  # WebView
+  webview_flutter: ^4.10.0
+
+  # 安全存储 (Cookie/凭证)
+  flutter_secure_storage: ^9.2.2
+
+  # 数据库
+  sqflite: ^2.4.1
+  path: ^1.9.0
+
+  # HTTP 请求 (与 ZeroClaw daemon 通信)
+  http: ^1.2.2
+
+  # 状态管理
+  provider: ^6.1.2
+
+  # 配置持久化
+  shared_preferences: ^2.3.3
+
+  # JSON 序列化
+  json_annotation: ^4.9.0
+
+  # 时间格式化
+  intl: ^0.20.2
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^5.0.0
+  json_serializable: ^6.9.0
+  build_runner: ^2.4.13
+
+flutter:
+  uses-material-design: true
+  assets:
+    - assets/sites/
