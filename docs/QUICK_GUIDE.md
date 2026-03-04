@@ -253,3 +253,79 @@ flutter doctor --android-licenses
 | Android Debug 构建 | `flutter build apk --debug` | ✅ app-debug.apk (139 MB) |
 
 环境：Flutter 3.35.3 / Dart 3.9.2 / Android SDK 35.0.0 / Ubuntu 24.04.3 LTS
+
+## 联机调试
+
+### android
+
+ADB 路径：/opt/tools/android-sdk/platform-tools/adb  
+Android SDK：/opt/tools/android-sdk  
+ANDROID_HOME：/opt/tools/android-sdk  
+  
+连上 Android 手机后直接执行 flutter run 即可，APK 会自动编译安装到设备上。  
+
+```text                                                                                                                                                                                         
+  Android 真机联调步骤                                                                                                                                                                        
+                                                            
+  1. 手机侧：开启开发者选项 + USB 调试                                                                                                                                                        
+                                                                                                                                                                                            
+  1. 进入 设置 → 关于手机，连续点击「版本号」7 次，解锁开发者选项                                                                                                                             
+  2. 进入 设置 → 开发者选项，开启：                                                                                                                                                           
+    - USB 调试                                                                                                                                                                                
+    - USB 安装（部分机型）                                                                                                                                                                    
+                                                                                                                                                                                              
+  2. 用 USB 线连接电脑                                                                                                                                                                        
+
+  # 确认设备识别
+  adb devices
+
+  期望输出（unauthorized 说明需在手机上点击"允许 USB 调试"弹窗）：
+  List of devices attached
+  R5CN10XXXXX    device
+
+  3. 运行到真机
+
+  # 确认 Flutter 也识别到设备
+  flutter devices
+
+  # 指定设备运行（有多设备时用 -d）
+  flutter run
+
+  # 或指定设备 ID
+  flutter run -d <device-id>
+
+  4. 无线调试（Android 11+，不用 USB）
+
+  # 手机进入"开发者选项 → 无线调试"，记下 IP 和端口，例如 192.168.1.5:41337
+
+  # 配对（第一次需要）
+  adb pair 192.168.1.5:41337
+
+  # 连接
+  adb connect 192.168.1.5:37185
+
+  # 确认
+  adb devices
+  flutter run
+```
+
+### ios
+
+```text
+
+  iOS 真机联调（需 macOS）
+
+  当前开发环境是 Linux，iOS 真机调试必须在 macOS + Xcode 上执行，Linux 无法直接调试 iOS 设备。
+
+  如果有 macOS 机器：
+
+  # 连接 iPhone，信任电脑（手机弹窗点"信任"）
+  flutter devices   # 会出现 iPhone 设备
+
+  # 运行（首次需 Xcode 配置签名）
+  flutter run -d <iphone-device-id>
+
+  需要在 Xcode 中配置：Runner → Signing & Capabilities → Team 选择 Apple 账号（免费账号可真机调试，但应用 7 天有效期）。
+```
+
+
