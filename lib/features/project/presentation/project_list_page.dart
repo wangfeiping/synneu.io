@@ -13,7 +13,7 @@ class ProjectListPage extends ConsumerWidget {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('synneu.io'),
+        title: const Text('Synneu'),
         centerTitle: false,
         actions: [
           IconButton(

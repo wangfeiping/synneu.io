@@ -21,11 +21,11 @@ class ProjectListNotifier extends AsyncNotifier<List<Project>> {
 
   Future<void> createProject(String name) async {
     final repo = ref.read(projectRepositoryProvider);
+    final previous = state.valueOrNull ?? [];
     state = const AsyncLoading();
     state = await AsyncValue.guard(() async {
       final project = await repo.createProject(name);
-      final current = state.valueOrNull ?? [];
-      return [...current, project];
+      return [...previous, project];
     });
   }
 
