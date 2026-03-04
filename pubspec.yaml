@@ -1,0 +1,54 @@
+name: synneu_io
+description: "集成 Git 和 AI Agent(ZeroClaw) 的多模态笔记应用，支持 Android 和 iOS。"
+publish_to: 'none'
+
+version: 1.0.0+1
+
+environment:
+  sdk: ^3.9.2
+
+dependencies:
+  flutter:
+    sdk: flutter
+  cupertino_icons: ^1.0.8
+
+  # 状态管理
+  flutter_riverpod: ^2.6.1
+  riverpod_annotation: ^2.6.1
+
+  # 路由
+  go_router: ^14.6.3
+
+  # 文件系统
+  path_provider: ^2.1.5
+  path: ^1.9.0
+
+  # 语音录制
+  record: ^6.0.0
+
+  # 语音识别
+  speech_to_text: ^7.0.0
+
+  # 时间格式化
+  intl: ^0.20.1
+
+  # UUID 生成
+  uuid: ^4.5.1
+
+  # 本地持久化（元数据）
+  shared_preferences: ^2.3.4
+
+  # HTTP（未来 ZeroClaw AI 接口）
+  http: ^1.2.2
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^5.0.0
+  build_runner: ^2.4.13
+  riverpod_generator: ^2.6.1
+  custom_lint: ^0.7.2
+  riverpod_lint: ^2.6.1
+
+flutter:
+  uses-material-design: true
