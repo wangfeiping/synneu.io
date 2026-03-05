@@ -304,8 +304,9 @@ class ProjectRepository {
     dev.log('执行: git pull origin', name: 'git');
     try {
       final repo = _openRepo(project);
-      final branch = repo.head.shorthand;
       final callbacks = _callbacks(project);
+      // 必须在 fetch 之前判断：unborn 分支时 repo.head 会抛出
+      final isUnborn = repo.isEmpty || repo.isBranchUnborn;
 
       // Step 1: fetch
       dev.log('fetch from origin...', name: 'git');
@@ -313,10 +314,41 @@ class ProjectRepository {
       remote.fetch(callbacks: callbacks);
       dev.log('fetch 完成', name: 'git');
 
-      // Step 2: 尝试快进合并
+      // Step 2: 确定分支名
+      // unborn 情况（本地还没有任何提交）：从远端跟踪引用自动检测默认分支
+      final String branch;
+      if (isUnborn) {
+        branch = _detectRemoteBranch(repo);
+        dev.log('unborn 仓库，检测到远端默认分支: $branch', name: 'git');
+      } else {
+        branch = repo.head.shorthand;
+      }
+
+      // Step 3: 快进合并或初始化本地分支
       final remoteRefName = 'refs/remotes/origin/$branch';
       try {
         final remoteRef = Reference.lookup(repo: repo, name: remoteRefName);
+
+        if (isUnborn) {
+          // 本地无任何提交：创建本地分支并更新 HEAD，再 checkout
+          Reference.create(
+            repo: repo,
+            name: 'refs/heads/$branch',
+            target: remoteRef.target,
+            logMessage: 'pull: initial',
+          );
+          // HEAD 默认可能指向 refs/heads/master，需更新为实际分支
+          Reference.create(
+            repo: repo,
+            name: 'HEAD',
+            target: 'refs/heads/$branch',
+            force: true,
+          );
+          Checkout.head(repo: repo, strategy: {GitCheckout.force});
+          dev.log('OK: git pull 初始化本地分支 $branch', name: 'git');
+          return 'git pull 成功（已初始化本地分支 $branch）';
+        }
+
         final analysis = Merge.analysis(repo: repo, theirHead: remoteRef.target);
         dev.log('merge analysis: ${analysis.result}', name: 'git');
 
@@ -324,7 +356,6 @@ class ProjectRepository {
           dev.log('OK: 已是最新', name: 'git');
           return '已是最新（up-to-date）';
         } else if (analysis.result.contains(GitMergeAnalysis.fastForward)) {
-          // 快进：直接移动分支指针
           Reference.setTarget(
             repo: repo,
             name: 'refs/heads/$branch',
@@ -335,12 +366,9 @@ class ProjectRepository {
           dev.log('OK: git pull fast-forward', name: 'git');
           return 'git pull 成功（Fast-forward）';
         } else {
-          throw Exception(
-            'pull 需要合并（非快进）操作，请手动处理冲突后再试',
-          );
+          throw Exception('pull 需要合并（非快进）操作，请手动处理冲突后再试');
         }
       } on Git2DartError catch (e) {
-        // 远端引用不存在（首次 fetch）
         dev.log('远端引用 $remoteRefName 不存在: $e', name: 'git', level: 900);
         return 'fetch 完成（首次拉取，无本地变更）';
       }
@@ -354,6 +382,24 @@ class ProjectRepository {
       );
       rethrow;
     }
+  }
+
+  /// fetch 后从远端跟踪引用自动检测默认分支名。
+  /// 优先检查常见名称，再枚举 refs/remotes/origin/* 取第一个。
+  String _detectRemoteBranch(Repository repo) {
+    for (final name in ['main', 'master', 'develop', 'trunk']) {
+      try {
+        Reference.lookup(repo: repo, name: 'refs/remotes/origin/$name');
+        return name;
+      } catch (_) {}
+    }
+    for (final refName in Reference.list(repo)) {
+      if (refName.startsWith('refs/remotes/origin/') &&
+          !refName.endsWith('/HEAD')) {
+        return refName.substring('refs/remotes/origin/'.length);
+      }
+    }
+    return 'main';
   }
 
   /// git remote add/set-url origin remoteUrl。失败时抛出异常。
