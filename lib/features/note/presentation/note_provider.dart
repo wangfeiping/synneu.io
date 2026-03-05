@@ -1,3 +1,4 @@
+import 'dart:developer' as dev;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../data/note_repository.dart';
 import '../domain/note.dart';
@@ -38,9 +39,18 @@ class NoteListNotifier extends FamilyAsyncNotifier<List<Note>, String> {
       projectPath: project.path,
     );
 
-    // Auto git add
-    final projectRepo = ref.read(projectRepositoryProvider);
-    await projectRepo.gitAdd(project, note.filePath);
+    // Auto git add — 失败时记录日志，不影响笔记保存结果
+    try {
+      await ref.read(projectRepositoryProvider).gitAdd(project, note.filePath);
+    } catch (e, st) {
+      dev.log(
+        'git add 失败（笔记已保存，仅 git 暂存失败）: $e',
+        name: 'NoteProvider',
+        level: 900,
+        error: e,
+        stackTrace: st,
+      );
+    }
 
     state = AsyncData([...(state.valueOrNull ?? []), note]);
     return note;
@@ -50,11 +60,23 @@ class NoteListNotifier extends FamilyAsyncNotifier<List<Note>, String> {
     final repo = ref.read(noteRepositoryProvider);
     final updated = await repo.updateNote(note, title: title, content: content);
 
-    // Auto git add
-    final projects = await ref.read(projectListProvider.future);
-    final project = projects.where((p) => p.id == arg).firstOrNull;
-    if (project != null) {
-      await ref.read(projectRepositoryProvider).gitAdd(project, updated.filePath);
+    // Auto git add — 失败时记录日志，不影响笔记保存结果
+    try {
+      final projects = await ref.read(projectListProvider.future);
+      final project = projects.where((p) => p.id == arg).firstOrNull;
+      if (project != null) {
+        await ref
+            .read(projectRepositoryProvider)
+            .gitAdd(project, updated.filePath);
+      }
+    } catch (e, st) {
+      dev.log(
+        'git add 失败（笔记已更新，仅 git 暂存失败）: $e',
+        name: 'NoteProvider',
+        level: 900,
+        error: e,
+        stackTrace: st,
+      );
     }
 
     state = AsyncData(

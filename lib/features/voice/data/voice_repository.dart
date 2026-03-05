@@ -1,3 +1,4 @@
+import 'dart:developer' as dev;
 import 'dart:io';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
@@ -24,8 +25,12 @@ class VoiceRepository {
   Future<bool> initSpeechToText() async {
     if (_sttInitialized) return true;
     _sttInitialized = await _stt.initialize(
-      onError: (_) {},
-      onStatus: (_) {},
+      onError: (error) {
+        dev.log('STT 错误: $error', name: 'VoiceRepository', level: 900);
+      },
+      onStatus: (status) {
+        dev.log('STT 状态: $status', name: 'VoiceRepository');
+      },
     );
     return _sttInitialized;
   }

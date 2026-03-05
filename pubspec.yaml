@@ -38,6 +38,9 @@ dependencies:
   # 本地持久化（元数据）
   shared_preferences: ^2.3.4
 
+  # libgit2 Dart FFI 绑定（真实 git 实现，支持 Android ARM64）
+  git2dart: ^0.4.0
+
   # HTTP（未来 ZeroClaw AI 接口）
   http: ^1.2.2
 

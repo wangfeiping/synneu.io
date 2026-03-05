@@ -1,6 +1,7 @@
-import 'package:flutter/foundation.dart';
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:git2dart/git2dart.dart';
 import 'app/router.dart';
 import 'app/theme.dart';
 
@@ -19,7 +20,12 @@ class _ErrorLogger extends ProviderObserver {
   }
 }
 
-void main() {
+Future<void> main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  // git2dart 在 Android 上需要提前初始化（解压捆绑的 CA 证书）
+  if (Platform.isAndroid) {
+    await PlatformSpecific.androidInitialize();
+  }
   runApp(ProviderScope(observers: [_ErrorLogger()], child: const SynneuApp()));
 }
 

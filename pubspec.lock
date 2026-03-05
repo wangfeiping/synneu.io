@@ -233,6 +233,14 @@ packages:
       url: "https://pub-web.flutter-io.cn"
     source: hosted
     version: "3.1.1"
+  equatable:
+    dependency: transitive
+    description:
+      name: equatable
+      sha256: "3e0141505477fd8ad55d6eb4e7776d3fe8430be8e497ccb1521370c3f21a3e2b"
+      url: "https://pub-web.flutter-io.cn"
+    source: hosted
+    version: "2.0.8"
   fake_async:
     dependency: transitive
     description:
@@ -312,6 +320,22 @@ packages:
       url: "https://pub-web.flutter-io.cn"
     source: hosted
     version: "4.0.0"
+  git2dart:
+    dependency: "direct main"
+    description:
+      name: git2dart
+      sha256: ed158fa233a17bef2b06e0e8d0082951411475f05e85244e61926829480ee190
+      url: "https://pub-web.flutter-io.cn"
+    source: hosted
+    version: "0.4.0"
+  git2dart_binaries:
+    dependency: transitive
+    description:
+      name: git2dart_binaries
+      sha256: "1184ebe1e357142e0656e6cb0d3b58a7b3bf6b84d40eb34afa9734542a6c2849"
+      url: "https://pub-web.flutter-io.cn"
+    source: hosted
+    version: "1.10.3"
   glob:
     dependency: transitive
     description:

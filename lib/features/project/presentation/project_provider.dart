@@ -45,14 +45,17 @@ class ProjectListNotifier extends AsyncNotifier<List<Project>> {
     );
   }
 
+  /// 失败时抛出异常，由 UI 层捕获并展示。
   Future<String> gitCommit(Project project, String message) async {
     return ref.read(projectRepositoryProvider).gitCommit(project, message);
   }
 
+  /// 失败时抛出异常，由 UI 层捕获并展示。
   Future<String> gitPush(Project project) async {
     return ref.read(projectRepositoryProvider).gitPush(project);
   }
 
+  /// 失败时抛出异常，由 UI 层捕获并展示。
   Future<String> gitPull(Project project) async {
     return ref.read(projectRepositoryProvider).gitPull(project);
   }
@@ -65,12 +68,17 @@ class ProjectListNotifier extends AsyncNotifier<List<Project>> {
     return ref.read(projectRepositoryProvider).gitLog(project);
   }
 
-  Future<bool> setRemote(Project project, String remoteUrl) async {
-    final ok = await ref.read(projectRepositoryProvider).setRemote(project, remoteUrl);
-    if (ok) {
-      final updated = project.copyWith(remoteUrl: remoteUrl);
-      await updateProject(updated);
-    }
-    return ok;
+  /// 运行 git remote add 并将 remoteUrl 持久化到项目。失败时抛出异常。
+  Future<void> setRemote(Project project, String remoteUrl) async {
+    await ref.read(projectRepositoryProvider).setRemote(project, remoteUrl);
+    final updated = project.copyWith(remoteUrl: remoteUrl);
+    await updateProject(updated);
+  }
+
+  /// 运行 git init 并将 isGitRepo 更新为 true。失败时抛出异常。
+  Future<void> initGit(Project project) async {
+    await ref.read(projectRepositoryProvider).gitInit(project);
+    final updated = project.copyWith(isGitRepo: true);
+    await updateProject(updated);
   }
 }

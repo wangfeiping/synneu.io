@@ -1,3 +1,4 @@
+import 'dart:developer' as dev;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -36,6 +37,34 @@ class _ProjectDetailView extends ConsumerStatefulWidget {
 
 class _ProjectDetailViewState extends ConsumerState<_ProjectDetailView> {
   String _gitOutput = '';
+  bool _gitOutputIsError = false;
+
+  void _setOutput(String text, {bool isError = false}) {
+    setState(() {
+      _gitOutput = text;
+      _gitOutputIsError = isError;
+    });
+  }
+
+  /// 执行 git 操作并处理异常：异常一律显示在终端面板并输出日志。
+  Future<void> _runGitOp(
+    String opName,
+    Future<String> Function() op,
+  ) async {
+    try {
+      final out = await op();
+      _setOutput(out.isEmpty ? '($opName 完成，无输出)' : out);
+    } catch (e, st) {
+      dev.log(
+        '$opName 失败: $e',
+        name: 'ProjectDetailPage',
+        level: 1000,
+        error: e,
+        stackTrace: st,
+      );
+      _setOutput('[错误] $e', isError: true);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -81,12 +110,12 @@ class _ProjectDetailViewState extends ConsumerState<_ProjectDetailView> {
                   _GitButton(
                     icon: Icons.history,
                     label: 'Status',
-                    onTap: () async {
+                    onTap: () => _runGitOp('git status', () async {
                       final out = await ref
                           .read(projectListProvider.notifier)
                           .gitStatus(project);
-                      setState(() => _gitOutput = out.isEmpty ? '(无变更)' : out);
-                    },
+                      return out.isEmpty ? '(无变更)' : out;
+                    }),
                   ),
                   const SizedBox(width: 8),
                   _GitButton(
@@ -98,34 +127,26 @@ class _ProjectDetailViewState extends ConsumerState<_ProjectDetailView> {
                   _GitButton(
                     icon: Icons.cloud_upload,
                     label: 'Push',
-                    onTap: () async {
-                      final out = await ref
-                          .read(projectListProvider.notifier)
-                          .gitPush(project);
-                      setState(() => _gitOutput = out);
-                    },
+                    onTap: () => _runGitOp('git push', () =>
+                        ref.read(projectListProvider.notifier).gitPush(project)),
                   ),
                   const SizedBox(width: 8),
                   _GitButton(
                     icon: Icons.cloud_download,
                     label: 'Pull',
-                    onTap: () async {
-                      final out = await ref
-                          .read(projectListProvider.notifier)
-                          .gitPull(project);
-                      setState(() => _gitOutput = out);
-                    },
+                    onTap: () => _runGitOp('git pull', () =>
+                        ref.read(projectListProvider.notifier).gitPull(project)),
                   ),
                   const SizedBox(width: 8),
                   _GitButton(
                     icon: Icons.list_alt,
                     label: 'Log',
-                    onTap: () async {
+                    onTap: () => _runGitOp('git log', () async {
                       final out = await ref
                           .read(projectListProvider.notifier)
                           .gitLog(project);
-                      setState(() => _gitOutput = out.isEmpty ? '(暂无提交)' : out);
-                    },
+                      return out.isEmpty ? '(暂无提交)' : out;
+                    }),
                   ),
                 ],
               ),
@@ -144,8 +165,10 @@ class _ProjectDetailViewState extends ConsumerState<_ProjectDetailView> {
                     child: SingleChildScrollView(
                       child: Text(
                         _gitOutput,
-                        style: const TextStyle(
-                          color: Colors.greenAccent,
+                        style: TextStyle(
+                          color: _gitOutputIsError
+                              ? Colors.redAccent
+                              : Colors.greenAccent,
                           fontFamily: 'monospace',
                           fontSize: 12,
                         ),
@@ -181,10 +204,9 @@ class _ProjectDetailViewState extends ConsumerState<_ProjectDetailView> {
           FilledButton(
             onPressed: () async {
               Navigator.pop(ctx);
-              final out = await ref
-                  .read(projectListProvider.notifier)
-                  .gitCommit(project, ctrl.text.trim());
-              setState(() => _gitOutput = out);
+              await _runGitOp('git commit', () =>
+                  ref.read(projectListProvider.notifier)
+                      .gitCommit(project, ctrl.text.trim()));
             },
             child: const Text('提交'),
           ),
@@ -198,6 +220,7 @@ class _ProjectDetailViewState extends ConsumerState<_ProjectDetailView> {
     final nameCtrl = TextEditingController(text: project.gitUserName ?? '');
     final emailCtrl = TextEditingController(text: project.gitUserEmail ?? '');
     final remoteCtrl = TextEditingController(text: project.remoteUrl ?? '');
+    final tokenCtrl = TextEditingController(text: project.gitToken ?? '');
 
     showDialog(
       context: context,
@@ -206,6 +229,42 @@ class _ProjectDetailViewState extends ConsumerState<_ProjectDetailView> {
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
+            if (!project.isGitRepo)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 12),
+                child: OutlinedButton.icon(
+                  icon: const Icon(Icons.source),
+                  label: const Text('初始化 Git 仓库'),
+                  onPressed: () async {
+                    Navigator.pop(ctx);
+                    try {
+                      await ref
+                          .read(projectListProvider.notifier)
+                          .initGit(project);
+                      if (context.mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(content: Text('Git 初始化成功')),
+                        );
+                      }
+                    } catch (e, st) {
+                      dev.log(
+                        'initGit 失败: $e',
+                        name: 'ProjectDetailPage',
+                        level: 1000,
+                        error: e,
+                        stackTrace: st,
+                      );
+                      if (context.mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                          content: Text('Git 初始化失败: $e'),
+                          backgroundColor:
+                              Theme.of(context).colorScheme.error,
+                        ));
+                      }
+                    }
+                  },
+                ),
+              ),
             TextField(
               controller: nameCtrl,
               decoration: const InputDecoration(labelText: 'Git 用户名'),
@@ -219,6 +278,14 @@ class _ProjectDetailViewState extends ConsumerState<_ProjectDetailView> {
               decoration:
                   const InputDecoration(labelText: 'Remote URL（可选）'),
             ),
+            TextField(
+              controller: tokenCtrl,
+              decoration: const InputDecoration(
+                labelText: 'Access Token（Push/Pull 认证）',
+                helperText: '如 GitHub Personal Access Token',
+              ),
+              obscureText: true,
+            ),
           ],
         ),
         actions: [
@@ -227,21 +294,43 @@ class _ProjectDetailViewState extends ConsumerState<_ProjectDetailView> {
           FilledButton(
             onPressed: () async {
               Navigator.pop(ctx);
-              var updated = project.copyWith(
-                gitUserName:
-                    nameCtrl.text.trim().isEmpty ? null : nameCtrl.text.trim(),
+              final remoteUrl = remoteCtrl.text.trim();
+              final updated = project.copyWith(
+                gitUserName: nameCtrl.text.trim().isEmpty
+                    ? null
+                    : nameCtrl.text.trim(),
                 gitUserEmail: emailCtrl.text.trim().isEmpty
                     ? null
                     : emailCtrl.text.trim(),
+                remoteUrl: remoteUrl.isEmpty ? null : remoteUrl,
+                gitToken: tokenCtrl.text.trim().isEmpty
+                    ? null
+                    : tokenCtrl.text.trim(),
               );
               await ref
                   .read(projectListProvider.notifier)
                   .updateProject(updated);
 
-              if (remoteCtrl.text.trim().isNotEmpty) {
-                await ref
-                    .read(projectListProvider.notifier)
-                    .setRemote(updated, remoteCtrl.text.trim());
+              if (remoteUrl.isNotEmpty) {
+                try {
+                  await ref
+                      .read(projectListProvider.notifier)
+                      .setRemote(updated, remoteUrl);
+                } catch (e, st) {
+                  dev.log(
+                    'setRemote 失败: $e',
+                    name: 'ProjectDetailPage',
+                    level: 1000,
+                    error: e,
+                    stackTrace: st,
+                  );
+                  if (context.mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                      content: Text('git remote 设置失败: $e'),
+                      backgroundColor: Theme.of(context).colorScheme.error,
+                    ));
+                  }
+                }
               }
             },
             child: const Text('保存'),

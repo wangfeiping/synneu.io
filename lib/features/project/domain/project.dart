@@ -1,3 +1,5 @@
+const _sentinel = Object();
+
 class Project {
   final String id;
   final String name;
@@ -6,9 +8,11 @@ class Project {
   final String? remoteUrl;
   final String? gitUserName;
   final String? gitUserEmail;
+  /// HTTPS 认证 Token（如 GitHub Personal Access Token）
+  final String? gitToken;
   final DateTime createdAt;
 
-  const Project({
+  Project({
     required this.id,
     required this.name,
     required this.path,
@@ -16,14 +20,16 @@ class Project {
     this.remoteUrl,
     this.gitUserName,
     this.gitUserEmail,
+    this.gitToken,
     required this.createdAt,
   });
 
   Project copyWith({
     String? name,
-    String? remoteUrl,
-    String? gitUserName,
-    String? gitUserEmail,
+    Object? remoteUrl = _sentinel,
+    Object? gitUserName = _sentinel,
+    Object? gitUserEmail = _sentinel,
+    Object? gitToken = _sentinel,
     bool? isGitRepo,
   }) {
     return Project(
@@ -31,9 +37,10 @@ class Project {
       name: name ?? this.name,
       path: path,
       isGitRepo: isGitRepo ?? this.isGitRepo,
-      remoteUrl: remoteUrl ?? this.remoteUrl,
-      gitUserName: gitUserName ?? this.gitUserName,
-      gitUserEmail: gitUserEmail ?? this.gitUserEmail,
+      remoteUrl: remoteUrl == _sentinel ? this.remoteUrl : remoteUrl as String?,
+      gitUserName: gitUserName == _sentinel ? this.gitUserName : gitUserName as String?,
+      gitUserEmail: gitUserEmail == _sentinel ? this.gitUserEmail : gitUserEmail as String?,
+      gitToken: gitToken == _sentinel ? this.gitToken : gitToken as String?,
       createdAt: createdAt,
     );
   }
@@ -46,6 +53,7 @@ class Project {
         'remoteUrl': remoteUrl,
         'gitUserName': gitUserName,
         'gitUserEmail': gitUserEmail,
+        'gitToken': gitToken,
         'createdAt': createdAt.toIso8601String(),
       };
 
@@ -57,6 +65,7 @@ class Project {
         remoteUrl: json['remoteUrl'] as String?,
         gitUserName: json['gitUserName'] as String?,
         gitUserEmail: json['gitUserEmail'] as String?,
+        gitToken: json['gitToken'] as String?,
         createdAt: DateTime.parse(json['createdAt'] as String),
       );
 }
