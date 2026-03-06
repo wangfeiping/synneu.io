@@ -122,20 +122,20 @@ class ProjectListPage extends ConsumerWidget {
       BuildContext context, WidgetRef ref, Project project) {
     final days = project.daysUntilPurge;
     return Card(
-      color: Colors.grey.shade100,
+      color: Colors.grey.shade800,
       child: ListTile(
-        leading: const CircleAvatar(
-          backgroundColor: Colors.grey,
-          child: Icon(Icons.delete_outline, color: Colors.white, size: 20),
+        leading: CircleAvatar(
+          backgroundColor: Colors.black,
+          child: Icon(Icons.delete_outline, color: Colors.grey.shade500, size: 20),
         ),
         title: Text(
           project.name,
-          style: const TextStyle(
-              fontWeight: FontWeight.bold, color: Colors.grey),
+          style: TextStyle(
+              fontWeight: FontWeight.bold, color: Colors.grey.shade500),
         ),
         subtitle: Text(
           '待删除 · 剩余 $days 天自动清理',
-          style: const TextStyle(color: Colors.orange, fontSize: 12),
+          style: TextStyle(color: Colors.grey.shade500, fontSize: 12),
         ),
         trailing: PopupMenuButton<_ProjectAction>(
           onSelected: (action) =>

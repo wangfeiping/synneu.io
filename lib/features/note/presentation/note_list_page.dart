@@ -66,6 +66,11 @@ class NoteListPage extends ConsumerWidget {
                         style: TextStyle(
                             fontSize: 11, color: Colors.grey.shade500),
                       ),
+                      Text(
+                        fmt.format(note.updatedAt),
+                        style: TextStyle(
+                            fontSize: 11, color: Colors.grey.shade400),
+                      ),
                       Text(note.title,
                           style:
                               const TextStyle(fontWeight: FontWeight.bold),
@@ -78,10 +83,6 @@ class NoteListPage extends ConsumerWidget {
                     maxLines: 2,
                     overflow: TextOverflow.ellipsis,
                     style: const TextStyle(fontSize: 12),
-                  ),
-                  trailing: Text(
-                    fmt.format(note.updatedAt),
-                    style: const TextStyle(fontSize: 11, color: Colors.grey),
                   ),
                   onTap: () => context.push(
                     '/project/$projectId/notes/edit',
