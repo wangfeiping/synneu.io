@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
+import 'package:path/path.dart' as p;
 import '../../../shared/widgets/loading_widget.dart';
 import '../../project/presentation/project_provider.dart';
 import 'note_provider.dart';
@@ -57,10 +58,21 @@ class NoteListPage extends ConsumerWidget {
               final note = notes[i];
               return Card(
                 child: ListTile(
-                  title: Text(note.title,
-                      style: const TextStyle(fontWeight: FontWeight.bold),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis),
+                  title: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        p.basename(note.filePath),
+                        style: TextStyle(
+                            fontSize: 11, color: Colors.grey.shade500),
+                      ),
+                      Text(note.title,
+                          style:
+                              const TextStyle(fontWeight: FontWeight.bold),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis),
+                    ],
+                  ),
                   subtitle: Text(
                     note.content.isEmpty ? '（无内容）' : note.content,
                     maxLines: 2,
