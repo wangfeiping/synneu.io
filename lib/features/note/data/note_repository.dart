@@ -106,6 +106,18 @@ class NoteRepository {
     return notes;
   }
 
+  /// 重命名笔记文件（newFileName 不含扩展名）
+  Future<Note> renameNote(Note note, String newFileName) async {
+    final safeFileName = newFileName.replaceAll(RegExp(r'[\\/:*?"<>|]'), '_');
+    final dir = p.dirname(note.filePath);
+    final newFilePath = p.join(dir, '$safeFileName.md');
+
+    final file = File(note.filePath);
+    await file.rename(newFilePath);
+
+    return note.copyWith(filePath: newFilePath);
+  }
+
   /// 删除笔记文件
   Future<void> deleteNote(Note note) async {
     final file = File(note.filePath);

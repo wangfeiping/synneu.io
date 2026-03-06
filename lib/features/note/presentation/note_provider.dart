@@ -85,8 +85,54 @@ class NoteListNotifier extends FamilyAsyncNotifier<List<Note>, String> {
     return updated;
   }
 
+  Future<Note> renameNote(Note note, String newFileName) async {
+    final renamed = await ref.read(noteRepositoryProvider).renameNote(note, newFileName);
+
+    // 暂存重命名：旧路径 rm，新路径 add
+    try {
+      final projects = await ref.read(projectListProvider.future);
+      final project = projects.where((p) => p.id == arg).firstOrNull;
+      if (project != null) {
+        final gitRepo = ref.read(projectRepositoryProvider);
+        await gitRepo.gitRemove(project, note.filePath);
+        await gitRepo.gitAdd(project, renamed.filePath);
+      }
+    } catch (e, st) {
+      dev.log(
+        'git rm/add 失败（文件已重命名，仅 git 暂存失败）: $e',
+        name: 'NoteProvider',
+        level: 900,
+        error: e,
+        stackTrace: st,
+      );
+    }
+
+    state = AsyncData(
+      (state.valueOrNull ?? []).map((n) => n.id == note.id ? renamed : n).toList(),
+    );
+    return renamed;
+  }
+
   Future<void> deleteNote(Note note) async {
     await ref.read(noteRepositoryProvider).deleteNote(note);
+
+    // 暂存删除
+    try {
+      final projects = await ref.read(projectListProvider.future);
+      final project = projects.where((p) => p.id == arg).firstOrNull;
+      if (project != null) {
+        await ref.read(projectRepositoryProvider).gitRemove(project, note.filePath);
+      }
+    } catch (e, st) {
+      dev.log(
+        'git rm 失败（文件已删除，仅 git 暂存失败）: $e',
+        name: 'NoteProvider',
+        level: 900,
+        error: e,
+        stackTrace: st,
+      );
+    }
+
     state = AsyncData(
       (state.valueOrNull ?? []).where((n) => n.id != note.id).toList(),
     );

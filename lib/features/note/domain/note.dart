@@ -21,6 +21,7 @@ class Note {
     String? title,
     String? content,
     DateTime? updatedAt,
+    String? filePath,
   }) {
     return Note(
       id: id,
@@ -29,7 +30,7 @@ class Note {
       projectId: projectId,
       createdAt: createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
-      filePath: filePath,
+      filePath: filePath ?? this.filePath,
     );
   }
 }

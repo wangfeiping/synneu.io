@@ -88,12 +88,75 @@ class NoteListPage extends ConsumerWidget {
                     '/project/$projectId/notes/edit',
                     extra: note,
                   ),
-                  onLongPress: () => _confirmDelete(context, ref, note),
+                  onLongPress: () => _showNoteOptions(context, ref, note),
                 ),
               );
             },
           );
         },
+      ),
+    );
+  }
+
+  void _showNoteOptions(BuildContext context, WidgetRef ref, note) {
+    showModalBottomSheet(
+      context: context,
+      builder: (ctx) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              leading: const Icon(Icons.drive_file_rename_outline),
+              title: const Text('重命名文件'),
+              onTap: () {
+                Navigator.pop(ctx);
+                _showRenameDialog(context, ref, note);
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.delete_outline, color: Colors.red),
+              title: const Text('删除笔记', style: TextStyle(color: Colors.red)),
+              onTap: () {
+                Navigator.pop(ctx);
+                _confirmDelete(context, ref, note);
+              },
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _showRenameDialog(BuildContext context, WidgetRef ref, note) {
+    final controller = TextEditingController(
+      text: p.basenameWithoutExtension(note.filePath),
+    );
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('重命名文件'),
+        content: TextField(
+          controller: controller,
+          autofocus: true,
+          decoration: const InputDecoration(
+            labelText: '文件名（不含扩展名）',
+          ),
+        ),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx), child: const Text('取消')),
+          TextButton(
+            onPressed: () async {
+              final newName = controller.text.trim();
+              if (newName.isEmpty) return;
+              Navigator.pop(ctx);
+              await ref
+                  .read(noteListProvider(projectId).notifier)
+                  .renameNote(note, newName);
+            },
+            child: const Text('确定'),
+          ),
+        ],
       ),
     );
   }

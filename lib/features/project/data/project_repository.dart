@@ -270,6 +270,28 @@ class ProjectRepository {
     }
   }
 
+  /// git rm --cached filePath（暂存删除）。失败时抛出异常。
+  Future<void> gitRemove(Project project, String filePath) async {
+    final relativePath = p.relative(filePath, from: project.path);
+    dev.log('执行: git rm $relativePath', name: 'git');
+    try {
+      final repo = _openRepo(project);
+      final index = repo.index;
+      index.remove(relativePath);
+      index.write();
+      dev.log('OK: git rm $relativePath', name: 'git');
+    } catch (e, st) {
+      dev.log(
+        'ERROR: git rm $relativePath -> $e',
+        name: 'git',
+        level: 1000,
+        error: e,
+        stackTrace: st,
+      );
+      rethrow;
+    }
+  }
+
   /// git commit -m message。失败时抛出异常，成功返回 "shortHash message"。
   Future<String> gitCommit(Project project, String message) async {
     dev.log('执行: git commit -m "$message"', name: 'git');
