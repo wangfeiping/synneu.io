@@ -16,7 +16,10 @@ final selectedProjectProvider = StateProvider<Project?>((ref) => null);
 class ProjectListNotifier extends AsyncNotifier<List<Project>> {
   @override
   Future<List<Project>> build() async {
-    return ref.read(projectRepositoryProvider).loadProjects();
+    final repo = ref.read(projectRepositoryProvider);
+    // 启动时自动清理超过30天的待删除项目
+    await repo.purgeExpiredProjects();
+    return repo.loadProjects();
   }
 
   Future<void> createProject(String name) async {
@@ -33,13 +36,38 @@ class ProjectListNotifier extends AsyncNotifier<List<Project>> {
     final repo = ref.read(projectRepositoryProvider);
     await repo.updateProject(project);
     state = AsyncData(
-      (state.valueOrNull ?? []).map((p) => p.id == project.id ? project : p).toList(),
+      (state.valueOrNull ?? [])
+          .map((p) => p.id == project.id ? project : p)
+          .toList(),
     );
   }
 
+  /// 重命名项目（同步重命名磁盘目录）。失败时抛出异常。
+  Future<void> renameProject(Project project, String newName) async {
+    final repo = ref.read(projectRepositoryProvider);
+    final updated = await repo.renameProject(project, newName);
+    state = AsyncData(
+      (state.valueOrNull ?? [])
+          .map((p) => p.id == project.id ? updated : p)
+          .toList(),
+    );
+  }
+
+  /// 软删除：将项目目录移入待删除区，标记 deletedAt。
   Future<void> deleteProject(Project project) async {
     final repo = ref.read(projectRepositoryProvider);
-    await repo.deleteProject(project);
+    final updated = await repo.softDeleteProject(project);
+    state = AsyncData(
+      (state.valueOrNull ?? [])
+          .map((p) => p.id == project.id ? updated : p)
+          .toList(),
+    );
+  }
+
+  /// 物理删除：立即删除目录和记录，不可恢复。
+  Future<void> hardDeleteProject(Project project) async {
+    final repo = ref.read(projectRepositoryProvider);
+    await repo.hardDeleteProject(project);
     state = AsyncData(
       (state.valueOrNull ?? []).where((p) => p.id != project.id).toList(),
     );

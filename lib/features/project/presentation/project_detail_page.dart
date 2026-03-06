@@ -68,7 +68,11 @@ class _ProjectDetailViewState extends ConsumerState<_ProjectDetailView> {
 
   @override
   Widget build(BuildContext context) {
-    final project = widget.project;
+    // 始终从 provider 取最新数据，避免重命名后使用过期 path
+    final project = ref.watch(projectListProvider).valueOrNull
+            ?.where((p) => p.id == widget.project.id)
+            .firstOrNull ??
+        widget.project;
 
     return Scaffold(
       appBar: AppBar(

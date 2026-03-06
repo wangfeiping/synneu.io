@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'dart:developer' as dev;
+import 'dart:io';
 import 'package:git2dart/git2dart.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
@@ -14,6 +15,13 @@ class ProjectRepository {
   Future<String> get _baseDir async {
     final appDir = await getApplicationDocumentsDirectory();
     return p.join(appDir.path, 'synneu_projects');
+  }
+
+  Future<String> get _deletingDir async {
+    final appDir = await getApplicationDocumentsDirectory();
+    final dir = Directory(p.join(appDir.path, 'synneu_deleting'));
+    if (!dir.existsSync()) dir.createSync(recursive: true);
+    return dir.path;
   }
 
   Future<List<Project>> loadProjects() async {
@@ -76,10 +84,125 @@ class ProjectRepository {
     return project;
   }
 
-  Future<void> deleteProject(Project project) async {
+  /// 重命名项目：同步重命名磁盘目录并更新记录。
+  /// newName 必须符合 ^[a-zA-Z0-9\-_.]+$。
+  Future<Project> renameProject(Project project, String newName) async {
+    final base = await _baseDir;
+    final newPath = p.join(base, newName);
+
+    if (Directory(newPath).existsSync()) {
+      throw Exception('已存在同名项目目录：$newName');
+    }
+
+    try {
+      final srcDir = Directory(project.path);
+      if (!srcDir.existsSync()) {
+        throw Exception('项目目录不存在：${project.path}');
+      }
+      await srcDir.rename(newPath);
+      dev.log('重命名目录: ${project.path} -> $newPath', name: 'project');
+    } catch (e, st) {
+      dev.log(
+        'ERROR: 重命名目录失败: $e',
+        name: 'project',
+        level: 1000,
+        error: e,
+        stackTrace: st,
+      );
+      rethrow;
+    }
+
+    final updated = project.copyWith(name: newName, path: newPath);
+    final projects = await loadProjects();
+    final idx = projects.indexWhere((pp) => pp.id == project.id);
+    if (idx >= 0) projects[idx] = updated;
+    await _saveProjects(projects);
+    return updated;
+  }
+
+  /// 软删除：将项目目录移入 synneu_deleting/，标记 deletedAt。
+  Future<Project> softDeleteProject(Project project) async {
+    final deletingBase = await _deletingDir;
+    final targetPath = p.join(deletingBase, project.id);
+    try {
+      final srcDir = Directory(project.path);
+      if (srcDir.existsSync()) {
+        await srcDir.rename(targetPath);
+        dev.log('移入待删除: ${project.path} -> $targetPath', name: 'project');
+      }
+    } catch (e, st) {
+      dev.log(
+        'ERROR: 移动项目目录失败: $e',
+        name: 'project',
+        level: 1000,
+        error: e,
+        stackTrace: st,
+      );
+      rethrow;
+    }
+
+    final updated = project.copyWith(
+      path: targetPath,
+      deletedAt: DateTime.now(),
+    );
+    final projects = await loadProjects();
+    final idx = projects.indexWhere((pp) => pp.id == project.id);
+    if (idx >= 0) projects[idx] = updated;
+    await _saveProjects(projects);
+    return updated;
+  }
+
+  /// 物理删除：删除磁盘目录，移除记录。
+  Future<void> hardDeleteProject(Project project) async {
+    try {
+      final dir = Directory(project.path);
+      if (dir.existsSync()) {
+        await dir.delete(recursive: true);
+        dev.log('物理删除目录: ${project.path}', name: 'project');
+      }
+    } catch (e, st) {
+      dev.log(
+        'ERROR: 删除目录失败: $e',
+        name: 'project',
+        level: 1000,
+        error: e,
+        stackTrace: st,
+      );
+      rethrow;
+    }
     final projects = await loadProjects();
     projects.removeWhere((pp) => pp.id == project.id);
     await _saveProjects(projects);
+  }
+
+  /// 清理已超过 30 天的待删除项目（目录 + 记录）。
+  Future<void> purgeExpiredProjects() async {
+    final projects = await loadProjects();
+    final now = DateTime.now();
+    const purgeAfterDays = 30;
+
+    final expired = projects
+        .where((p) =>
+            p.deletedAt != null &&
+            now.difference(p.deletedAt!).inDays >= purgeAfterDays)
+        .toList();
+
+    if (expired.isEmpty) return;
+
+    for (final project in expired) {
+      try {
+        final dir = Directory(project.path);
+        if (dir.existsSync()) await dir.delete(recursive: true);
+        dev.log('自动清理过期项目: ${project.name}', name: 'project');
+      } catch (e) {
+        dev.log('清理目录失败，跳过: ${project.name}: $e',
+            name: 'project', level: 900);
+      }
+    }
+
+    final expiredIds = expired.map((p) => p.id).toSet();
+    await _saveProjects(
+        projects.where((p) => !expiredIds.contains(p.id)).toList());
   }
 
   // ── Git helpers ──────────────────────────────────────────────────
@@ -315,7 +438,6 @@ class ProjectRepository {
       dev.log('fetch 完成', name: 'git');
 
       // Step 2: 确定分支名
-      // unborn 情况（本地还没有任何提交）：从远端跟踪引用自动检测默认分支
       final String branch;
       if (isUnborn) {
         branch = _detectRemoteBranch(repo);
@@ -330,14 +452,12 @@ class ProjectRepository {
         final remoteRef = Reference.lookup(repo: repo, name: remoteRefName);
 
         if (isUnborn) {
-          // 本地无任何提交：创建本地分支并更新 HEAD，再 checkout
           Reference.create(
             repo: repo,
             name: 'refs/heads/$branch',
             target: remoteRef.target,
             logMessage: 'pull: initial',
           );
-          // HEAD 默认可能指向 refs/heads/master，需更新为实际分支
           Reference.create(
             repo: repo,
             name: 'HEAD',
@@ -384,8 +504,6 @@ class ProjectRepository {
     }
   }
 
-  /// fetch 后从远端跟踪引用自动检测默认分支名。
-  /// 优先检查常见名称，再枚举 refs/remotes/origin/* 取第一个。
   String _detectRemoteBranch(Repository repo) {
     for (final name in ['main', 'master', 'develop', 'trunk']) {
       try {
@@ -407,7 +525,6 @@ class ProjectRepository {
     dev.log('执行: git remote set-url origin $remoteUrl', name: 'git');
     try {
       final repo = _openRepo(project);
-      // 先尝试删除旧 remote（可能不存在，忽略失败）
       try {
         Remote.delete(repo: repo, name: 'origin');
         dev.log('git remote delete origin OK', name: 'git');
