@@ -97,7 +97,12 @@ class NoteRepository {
       ));
     }
 
-    notes.sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
+    notes.sort((a, b) {
+      final aIsReadme = p.basename(a.filePath).toLowerCase() == 'readme.md';
+      final bIsReadme = p.basename(b.filePath).toLowerCase() == 'readme.md';
+      if (aIsReadme != bIsReadme) return aIsReadme ? -1 : 1;
+      return p.basename(b.filePath).compareTo(p.basename(a.filePath));
+    });
     return notes;
   }
 
