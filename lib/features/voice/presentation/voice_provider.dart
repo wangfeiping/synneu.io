@@ -59,18 +59,25 @@ class VoiceNotifier extends Notifier<VoiceState> {
 
     state = state.copyWith(status: VoiceRecordStatus.recording, liveText: '');
 
-    await repo.transcribeLive(
-      onPartial: (text) {
-        state = state.copyWith(liveText: text);
-      },
-      onFinal: (text) {
-        state = state.copyWith(
-          status: VoiceRecordStatus.done,
-          liveText: text,
-          finalText: text,
-        );
-      },
-    );
+    try {
+      await repo.transcribeLive(
+        onPartial: (text) {
+          state = state.copyWith(liveText: text);
+        },
+        onFinal: (text) {
+          state = state.copyWith(
+            status: VoiceRecordStatus.done,
+            liveText: text,
+            finalText: text,
+          );
+        },
+      );
+    } catch (e) {
+      state = state.copyWith(
+        status: VoiceRecordStatus.error,
+        errorMessage: e.toString().replaceFirst('Exception: ', ''),
+      );
+    }
   }
 
   Future<void> stopListening() async {

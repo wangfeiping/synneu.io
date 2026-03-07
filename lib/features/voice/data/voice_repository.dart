@@ -53,6 +53,9 @@ class VoiceRepository {
     required void Function(String final_) onFinal,
   }) async {
     if (!_sttInitialized) await initSpeechToText();
+    if (!_sttInitialized) {
+      throw Exception('语音识别初始化失败，请检查麦克风权限或设备是否支持语音识别');
+    }
 
     final buffer = StringBuffer();
 
