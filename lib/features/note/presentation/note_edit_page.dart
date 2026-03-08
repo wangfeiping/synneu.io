@@ -7,11 +7,13 @@ import '../../voice/presentation/voice_input_widget.dart';
 
 class NoteEditPage extends ConsumerStatefulWidget {
   final String projectId;
+  final String subPath;
   final Note? existingNote;
 
   const NoteEditPage({
     super.key,
     required this.projectId,
+    this.subPath = '',
     this.existingNote,
   });
 
@@ -55,7 +57,7 @@ class _NoteEditPageState extends ConsumerState<NoteEditPage> {
     try {
       if (_isEditing) {
         await ref
-            .read(noteListProvider((widget.projectId, '')).notifier)
+            .read(noteListProvider((widget.projectId, widget.subPath)).notifier)
             .updateNote(
               widget.existingNote!,
               title: title,
@@ -63,7 +65,7 @@ class _NoteEditPageState extends ConsumerState<NoteEditPage> {
             );
       } else {
         await ref
-            .read(noteListProvider((widget.projectId, '')).notifier)
+            .read(noteListProvider((widget.projectId, widget.subPath)).notifier)
             .createNote(title: title, content: content);
       }
       if (mounted) context.pop();

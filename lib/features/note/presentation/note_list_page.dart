@@ -114,7 +114,7 @@ class NoteListPage extends ConsumerWidget {
                     ),
                     onTap: () => context.push(
                       '/project/$projectId/notes/edit',
-                      extra: note,
+                      extra: (subPath, note),
                     ),
                     onLongPress: () => _showNoteOptions(context, ref, note),
                   ),
@@ -244,7 +244,10 @@ class NoteListPage extends ConsumerWidget {
               title: const Text('笔记'),
               onTap: () {
                 Navigator.pop(ctx);
-                context.push('/project/$projectId/notes/edit');
+                context.push(
+                  '/project/$projectId/notes/edit',
+                  extra: (subPath, null),
+                );
               },
             ),
             ListTile(

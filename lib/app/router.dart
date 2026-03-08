@@ -30,10 +30,11 @@ final router = GoRouter(
               path: 'edit',
               builder: (context, state) {
                 final projectId = state.pathParameters['projectId']!;
-                final note = state.extra as Note?;
+                final extra = state.extra as (String, Note?)?;
                 return NoteEditPage(
                   projectId: projectId,
-                  existingNote: note,
+                  subPath: extra?.$1 ?? '',
+                  existingNote: extra?.$2,
                 );
               },
             ),

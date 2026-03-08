@@ -68,12 +68,14 @@ class NoteListNotifier
   }) async {
     final projects = await ref.read(projectListProvider.future);
     final project = projects.where((p) => p.id == arg.$1).first;
+    final dirPath =
+        arg.$2.isEmpty ? project.path : p.join(project.path, arg.$2);
     final repo = ref.read(noteRepositoryProvider);
     final note = await repo.createNote(
       title: title,
       content: content,
       projectId: arg.$1,
-      projectPath: project.path,
+      projectPath: dirPath,
     );
 
     try {
