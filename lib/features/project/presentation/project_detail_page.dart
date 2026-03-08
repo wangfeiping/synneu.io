@@ -2,8 +2,12 @@ import 'dart:developer' as dev;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:intl/intl.dart';
+import 'package:path/path.dart' as p;
 import '../domain/project.dart';
 import 'project_provider.dart';
+import '../../note/domain/note.dart';
+import '../../note/presentation/note_provider.dart';
 
 class ProjectDetailPage extends ConsumerWidget {
   final String projectId;
@@ -46,7 +50,6 @@ class _ProjectDetailViewState extends ConsumerState<_ProjectDetailView> {
     });
   }
 
-  /// 执行 git 操作并处理异常：异常一律显示在终端面板并输出日志。
   Future<void> _runGitOp(
     String opName,
     Future<String> Function() op,
@@ -68,29 +71,27 @@ class _ProjectDetailViewState extends ConsumerState<_ProjectDetailView> {
 
   @override
   Widget build(BuildContext context) {
-    // 始终从 provider 取最新数据，避免重命名后使用过期 path
     final project = ref.watch(projectListProvider).valueOrNull
             ?.where((p) => p.id == widget.project.id)
             .firstOrNull ??
         widget.project;
 
+    final key = (project.id, '');
+    final notesAsync = ref.watch(noteListProvider(key));
+    final dirs = ref.watch(dirListProvider(key)).valueOrNull ?? [];
+
     return Scaffold(
       appBar: AppBar(
         title: Text(project.name),
       ),
+      floatingActionButton: FloatingActionButton.extended(
+        onPressed: () => _showCreateMenu(context, ref, project),
+        icon: const Icon(Icons.add),
+        label: const Text('新建'),
+      ),
       body: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          // 笔记入口
-          Padding(
-            padding: const EdgeInsets.all(16),
-            child: FilledButton.icon(
-              icon: const Icon(Icons.note_add),
-              label: const Text('查看 / 创建笔记'),
-              onPressed: () => context.push('/project/${project.id}/notes'),
-            ),
-          ),
-
           // Git 操作面板
           if (project.isGitRepo) ...[
             const Divider(),
@@ -150,8 +151,9 @@ class _ProjectDetailViewState extends ConsumerState<_ProjectDetailView> {
               ),
             ),
             if (_gitOutput.isNotEmpty) ...[
-              const SizedBox(height: 12),
-              Expanded(
+              const SizedBox(height: 8),
+              ConstrainedBox(
+                constraints: const BoxConstraints(maxHeight: 160),
                 child: Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 16),
                   child: Container(
@@ -175,15 +177,277 @@ class _ProjectDetailViewState extends ConsumerState<_ProjectDetailView> {
                   ),
                 ),
               ),
-              const SizedBox(height: 16),
+              const SizedBox(height: 8),
             ],
           ],
+
+          // 文件列表
+          const Divider(),
+          Expanded(
+            child: notesAsync.when(
+              loading: () => const Center(child: CircularProgressIndicator()),
+              error: (e, _) => Center(child: Text('加载失败：$e')),
+              data: (notes) {
+                if (notes.isEmpty && dirs.isEmpty) {
+                  return const Center(
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(Icons.folder_open, size: 64, color: Colors.grey),
+                        SizedBox(height: 16),
+                        Text('还没有笔记，点击右下角创建'),
+                      ],
+                    ),
+                  );
+                }
+                final fmt = DateFormat('MM-dd HH:mm');
+                final totalCount = notes.length + dirs.length;
+                return ListView.separated(
+                  padding: const EdgeInsets.all(16),
+                  itemCount: totalCount,
+                  separatorBuilder: (_, __) => const SizedBox(height: 8),
+                  itemBuilder: (context, i) {
+                    if (i < notes.length) {
+                      final note = notes[i];
+                      return Card(
+                        child: ListTile(
+                          title: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                p.basename(note.filePath),
+                                style: TextStyle(
+                                    fontSize: 11, color: Colors.grey.shade500),
+                              ),
+                              Text(
+                                fmt.format(note.updatedAt),
+                                style: TextStyle(
+                                    fontSize: 11, color: Colors.grey.shade400),
+                              ),
+                              Text(
+                                note.title,
+                                style: const TextStyle(
+                                    fontWeight: FontWeight.bold),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ],
+                          ),
+                          subtitle: Text(
+                            note.content.isEmpty ? '（无内容）' : note.content,
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(fontSize: 12),
+                          ),
+                          onTap: () => context.push(
+                            '/project/${project.id}/notes/edit',
+                            extra: ('', note),
+                          ),
+                          onLongPress: () =>
+                              _showNoteOptions(context, ref, project, note),
+                        ),
+                      );
+                    } else {
+                      final dirName = dirs[i - notes.length];
+                      return Card(
+                        child: ListTile(
+                          leading: const Icon(Icons.folder_outlined),
+                          title: Text(
+                            dirName,
+                            style:
+                                const TextStyle(fontWeight: FontWeight.w500),
+                          ),
+                          onTap: () => context.push(
+                            '/project/${project.id}/notes',
+                            extra: dirName,
+                          ),
+                        ),
+                      );
+                    }
+                  },
+                );
+              },
+            ),
+          ),
         ],
       ),
     );
   }
 
-  void _showCommitDialog(BuildContext context, WidgetRef ref, Project project) {
+  void _showNoteOptions(
+      BuildContext context, WidgetRef ref, Project project, Note note) {
+    showModalBottomSheet(
+      context: context,
+      builder: (ctx) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              leading: const Icon(Icons.drive_file_rename_outline),
+              title: const Text('重命名文件'),
+              onTap: () {
+                Navigator.pop(ctx);
+                _showRenameDialog(context, ref, project, note);
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.delete_outline, color: Colors.red),
+              title: const Text('删除笔记',
+                  style: TextStyle(color: Colors.red)),
+              onTap: () {
+                Navigator.pop(ctx);
+                _confirmDelete(context, ref, project, note);
+              },
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _showRenameDialog(
+      BuildContext context, WidgetRef ref, Project project, Note note) {
+    final controller = TextEditingController(
+      text: p.basenameWithoutExtension(note.filePath),
+    );
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('重命名文件'),
+        content: TextField(
+          controller: controller,
+          autofocus: true,
+          decoration: const InputDecoration(
+            labelText: '文件名（不含扩展名）',
+          ),
+        ),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('取消')),
+          TextButton(
+            onPressed: () async {
+              final newName = controller.text.trim();
+              if (newName.isEmpty) return;
+              Navigator.pop(ctx);
+              await ref
+                  .read(noteListProvider((project.id, '')).notifier)
+                  .renameNote(note, newName);
+            },
+            child: const Text('确定'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _confirmDelete(
+      BuildContext context, WidgetRef ref, Project project, Note note) {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('删除笔记'),
+        content: Text('确定删除「${note.title}」？此操作不可撤销。'),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('取消')),
+          TextButton(
+            style: TextButton.styleFrom(foregroundColor: Colors.red),
+            onPressed: () async {
+              Navigator.pop(ctx);
+              await ref
+                  .read(noteListProvider((project.id, '')).notifier)
+                  .deleteNote(note);
+            },
+            child: const Text('删除'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showCreateMenu(
+      BuildContext context, WidgetRef ref, Project project) {
+    showModalBottomSheet(
+      context: context,
+      builder: (ctx) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              leading: const Icon(Icons.note_add_outlined),
+              title: const Text('笔记'),
+              onTap: () {
+                Navigator.pop(ctx);
+                context.push(
+                  '/project/${project.id}/notes/edit',
+                  extra: ('', null),
+                );
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.create_new_folder_outlined),
+              title: const Text('文件夹'),
+              onTap: () {
+                Navigator.pop(ctx);
+                _showCreateDirDialog(context, ref, project);
+              },
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _showCreateDirDialog(
+      BuildContext context, WidgetRef ref, Project project) {
+    final controller = TextEditingController();
+    final formKey = GlobalKey<FormState>();
+    final validPattern = RegExp(r'^[a-zA-Z0-9_\-.]+$');
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('新建文件夹'),
+        content: Form(
+          key: formKey,
+          child: TextFormField(
+            controller: controller,
+            autofocus: true,
+            decoration: const InputDecoration(
+              labelText: '文件夹名称',
+              hintText: '仅限英文、数字及 _ - .',
+            ),
+            validator: (v) {
+              final name = v?.trim() ?? '';
+              if (name.isEmpty) return '名称不能为空';
+              if (!validPattern.hasMatch(name)) return '仅允许英文、数字及 _ - . 字符';
+              return null;
+            },
+          ),
+        ),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('取消')),
+          TextButton(
+            onPressed: () async {
+              if (!formKey.currentState!.validate()) return;
+              final name = controller.text.trim();
+              Navigator.pop(ctx);
+              await ref
+                  .read(dirListProvider((project.id, '')).notifier)
+                  .createDir(name);
+            },
+            child: const Text('创建'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showCommitDialog(
+      BuildContext context, WidgetRef ref, Project project) {
     final ctrl = TextEditingController(
       text: 'feat: update notes ${DateTime.now().toString().substring(0, 16)}',
     );
@@ -198,12 +462,15 @@ class _ProjectDetailViewState extends ConsumerState<_ProjectDetailView> {
         ),
         actions: [
           TextButton(
-              onPressed: () => Navigator.pop(ctx), child: const Text('取消')),
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('取消')),
           FilledButton(
             onPressed: () async {
               Navigator.pop(ctx);
-              await _runGitOp('git commit', () =>
-                  ref.read(projectListProvider.notifier)
+              await _runGitOp(
+                  'git commit',
+                  () => ref
+                      .read(projectListProvider.notifier)
                       .gitCommit(project, ctrl.text.trim()));
             },
             child: const Text('提交'),
@@ -212,9 +479,7 @@ class _ProjectDetailViewState extends ConsumerState<_ProjectDetailView> {
       ),
     );
   }
-
 }
-
 
 class _GitButton extends StatelessWidget {
   final IconData icon;
