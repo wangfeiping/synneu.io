@@ -8,6 +8,7 @@ import '../domain/project.dart';
 import 'project_provider.dart';
 import '../../note/domain/note.dart';
 import '../../note/presentation/note_provider.dart';
+import '../../../shared/widgets/dashed_add_button.dart';
 
 class ProjectDetailPage extends ConsumerWidget {
   final String projectId;
@@ -42,6 +43,7 @@ class _ProjectDetailView extends ConsumerStatefulWidget {
 class _ProjectDetailViewState extends ConsumerState<_ProjectDetailView> {
   String _gitOutput = '';
   bool _gitOutputIsError = false;
+  bool _menuOpen = false;
 
   void _setOutput(String text, {bool isError = false}) {
     setState(() {
@@ -83,11 +85,6 @@ class _ProjectDetailViewState extends ConsumerState<_ProjectDetailView> {
     return Scaffold(
       appBar: AppBar(
         title: Text(project.name),
-      ),
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: () => _showCreateMenu(context, ref, project),
-        icon: const Icon(Icons.add),
-        label: const Text('新建'),
       ),
       body: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -181,6 +178,50 @@ class _ProjectDetailViewState extends ConsumerState<_ProjectDetailView> {
             ],
           ],
 
+          // 新建按钮
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+            child: DashedAddButton(
+              onTap: () => setState(() => _menuOpen = !_menuOpen),
+            ),
+          ),
+          // 下滑菜单
+          ClipRect(
+            child: AnimatedAlign(
+              duration: const Duration(milliseconds: 200),
+              curve: Curves.easeOut,
+              alignment: Alignment.topCenter,
+              heightFactor: _menuOpen ? 1.0 : 0.0,
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                child: Column(
+                  children: [
+                    const SizedBox(height: 4),
+                    ListTile(
+                      leading: const Icon(Icons.note_add_outlined),
+                      title: const Text('笔记'),
+                      onTap: () {
+                        setState(() => _menuOpen = false);
+                        context.push(
+                          '/project/${project.id}/notes/edit',
+                          extra: ('', null),
+                        );
+                      },
+                    ),
+                    ListTile(
+                      leading: const Icon(Icons.create_new_folder_outlined),
+                      title: const Text('文件夹'),
+                      onTap: () {
+                        setState(() => _menuOpen = false);
+                        _showCreateDirDialog(context, ref, project);
+                      },
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+
           // 文件列表
           const Divider(),
           Expanded(
@@ -195,7 +236,7 @@ class _ProjectDetailViewState extends ConsumerState<_ProjectDetailView> {
                       children: [
                         Icon(Icons.folder_open, size: 64, color: Colors.grey),
                         SizedBox(height: 16),
-                        Text('还没有笔记，点击右下角创建'),
+                        Text('还没有笔记，点击上方 + 创建'),
                       ],
                     ),
                   );
@@ -363,39 +404,6 @@ class _ProjectDetailViewState extends ConsumerState<_ProjectDetailView> {
             child: const Text('删除'),
           ),
         ],
-      ),
-    );
-  }
-
-  void _showCreateMenu(
-      BuildContext context, WidgetRef ref, Project project) {
-    showModalBottomSheet(
-      context: context,
-      builder: (ctx) => SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            ListTile(
-              leading: const Icon(Icons.note_add_outlined),
-              title: const Text('笔记'),
-              onTap: () {
-                Navigator.pop(ctx);
-                context.push(
-                  '/project/${project.id}/notes/edit',
-                  extra: ('', null),
-                );
-              },
-            ),
-            ListTile(
-              leading: const Icon(Icons.create_new_folder_outlined),
-              title: const Text('文件夹'),
-              onTap: () {
-                Navigator.pop(ctx);
-                _showCreateDirDialog(context, ref, project);
-              },
-            ),
-          ],
-        ),
       ),
     );
   }

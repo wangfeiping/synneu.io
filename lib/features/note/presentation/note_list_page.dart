@@ -4,10 +4,11 @@ import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 import 'package:path/path.dart' as p;
 import '../../../shared/widgets/loading_widget.dart';
+import '../../../shared/widgets/dashed_add_button.dart';
 import '../../project/presentation/project_provider.dart';
 import 'note_provider.dart';
 
-class NoteListPage extends ConsumerWidget {
+class NoteListPage extends ConsumerStatefulWidget {
   final String projectId;
   final String subPath;
   const NoteListPage({
@@ -17,15 +18,22 @@ class NoteListPage extends ConsumerWidget {
   });
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final key = (projectId, subPath);
-    final notesAsync = ref.watch(noteListProvider(key));
-    final dirsAsync = ref.watch(dirListProvider(key));
-    final dirs = dirsAsync.valueOrNull ?? [];
+  ConsumerState<NoteListPage> createState() => _NoteListPageState();
+}
 
-    final projectsAsync = ref.watch(projectListProvider);
-    final projectName = projectsAsync.valueOrNull
-            ?.where((proj) => proj.id == projectId)
+class _NoteListPageState extends ConsumerState<NoteListPage> {
+  bool _menuOpen = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final key = (widget.projectId, widget.subPath);
+    final notesAsync = ref.watch(noteListProvider(key));
+    final dirs = ref.watch(dirListProvider(key)).valueOrNull ?? [];
+
+    final projectName = ref
+            .watch(projectListProvider)
+            .valueOrNull
+            ?.where((proj) => proj.id == widget.projectId)
             .firstOrNull
             ?.name ??
         '笔记';
@@ -36,115 +44,169 @@ class NoteListPage extends ConsumerWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(projectName),
-            if (subPath.isNotEmpty)
+            if (widget.subPath.isNotEmpty)
               Text(
-                subPath,
+                widget.subPath,
                 style: TextStyle(
                   fontSize: 12,
                   color: Theme.of(context)
                       .appBarTheme
                       .foregroundColor
-                      ?.withOpacity(0.7),
+                      ?.withValues(alpha: 0.7),
                 ),
               ),
           ],
         ),
       ),
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: () => _showCreateMenu(context, ref),
-        icon: const Icon(Icons.add),
-        label: const Text('新建'),
-      ),
-      body: notesAsync.when(
-        loading: () => const LoadingWidget(message: '加载中...'),
-        error: (e, _) => ErrorWidget2(
-          message: '加载失败：$e',
-          onRetry: () => ref.invalidate(noteListProvider(key)),
-        ),
-        data: (notes) {
-          if (notes.isEmpty && dirs.isEmpty) {
-            return Center(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  const Icon(Icons.folder_open, size: 64, color: Colors.grey),
-                  const SizedBox(height: 16),
-                  Text(subPath.isEmpty ? '还没有笔记，点击右下角创建' : '此文件夹为空'),
-                ],
+      body: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          // 新建按钮
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+            child: DashedAddButton(
+              onTap: () => setState(() => _menuOpen = !_menuOpen),
+            ),
+          ),
+          // 下滑菜单
+          ClipRect(
+            child: AnimatedAlign(
+              duration: const Duration(milliseconds: 200),
+              curve: Curves.easeOut,
+              alignment: Alignment.topCenter,
+              heightFactor: _menuOpen ? 1.0 : 0.0,
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                child: Column(
+                  children: [
+                    const SizedBox(height: 4),
+                    ListTile(
+                      leading: const Icon(Icons.note_add_outlined),
+                      title: const Text('笔记'),
+                      onTap: () {
+                        setState(() => _menuOpen = false);
+                        context.push(
+                          '/project/${widget.projectId}/notes/edit',
+                          extra: (widget.subPath, null),
+                        );
+                      },
+                    ),
+                    ListTile(
+                      leading: const Icon(Icons.create_new_folder_outlined),
+                      title: const Text('文件夹'),
+                      onTap: () {
+                        setState(() => _menuOpen = false);
+                        _showCreateDirDialog(context);
+                      },
+                    ),
+                  ],
+                ),
               ),
-            );
-          }
-          final fmt = DateFormat('MM-dd HH:mm');
-          final totalCount = notes.length + dirs.length;
-          return ListView.separated(
-            padding: const EdgeInsets.all(16),
-            itemCount: totalCount,
-            separatorBuilder: (_, __) => const SizedBox(height: 8),
-            itemBuilder: (context, i) {
-              if (i < notes.length) {
-                final note = notes[i];
-                return Card(
-                  child: ListTile(
-                    title: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
+            ),
+          ),
+
+          // 文件列表
+          const Divider(),
+          Expanded(
+            child: notesAsync.when(
+              loading: () => const LoadingWidget(message: '加载中...'),
+              error: (e, _) => ErrorWidget2(
+                message: '加载失败：$e',
+                onRetry: () => ref.invalidate(noteListProvider(key)),
+              ),
+              data: (notes) {
+                if (notes.isEmpty && dirs.isEmpty) {
+                  return Center(
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
                       children: [
-                        Text(
-                          p.basename(note.filePath),
-                          style: TextStyle(
-                              fontSize: 11, color: Colors.grey.shade500),
-                        ),
-                        Text(
-                          fmt.format(note.updatedAt),
-                          style: TextStyle(
-                              fontSize: 11, color: Colors.grey.shade400),
-                        ),
-                        Text(
-                          note.title,
-                          style: const TextStyle(fontWeight: FontWeight.bold),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                        ),
+                        const Icon(Icons.folder_open,
+                            size: 64, color: Colors.grey),
+                        const SizedBox(height: 16),
+                        Text(widget.subPath.isEmpty
+                            ? '还没有笔记，点击上方 + 创建'
+                            : '此文件夹为空'),
                       ],
                     ),
-                    subtitle: Text(
-                      note.content.isEmpty ? '（无内容）' : note.content,
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(fontSize: 12),
-                    ),
-                    onTap: () => context.push(
-                      '/project/$projectId/notes/edit',
-                      extra: (subPath, note),
-                    ),
-                    onLongPress: () => _showNoteOptions(context, ref, note),
-                  ),
+                  );
+                }
+                final fmt = DateFormat('MM-dd HH:mm');
+                final totalCount = notes.length + dirs.length;
+                return ListView.separated(
+                  padding: const EdgeInsets.all(16),
+                  itemCount: totalCount,
+                  separatorBuilder: (_, __) => const SizedBox(height: 8),
+                  itemBuilder: (context, i) {
+                    if (i < notes.length) {
+                      final note = notes[i];
+                      return Card(
+                        child: ListTile(
+                          title: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                p.basename(note.filePath),
+                                style: TextStyle(
+                                    fontSize: 11, color: Colors.grey.shade500),
+                              ),
+                              Text(
+                                fmt.format(note.updatedAt),
+                                style: TextStyle(
+                                    fontSize: 11, color: Colors.grey.shade400),
+                              ),
+                              Text(
+                                note.title,
+                                style: const TextStyle(
+                                    fontWeight: FontWeight.bold),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ],
+                          ),
+                          subtitle: Text(
+                            note.content.isEmpty ? '（无内容）' : note.content,
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(fontSize: 12),
+                          ),
+                          onTap: () => context.push(
+                            '/project/${widget.projectId}/notes/edit',
+                            extra: (widget.subPath, note),
+                          ),
+                          onLongPress: () =>
+                              _showNoteOptions(context, note),
+                        ),
+                      );
+                    } else {
+                      final dirName = dirs[i - notes.length];
+                      final newSubPath = widget.subPath.isEmpty
+                          ? dirName
+                          : '${widget.subPath}/$dirName';
+                      return Card(
+                        child: ListTile(
+                          leading: const Icon(Icons.folder_outlined),
+                          title: Text(
+                            dirName,
+                            style: const TextStyle(fontWeight: FontWeight.w500),
+                          ),
+                          onTap: () => context.push(
+                            '/project/${widget.projectId}/notes',
+                            extra: newSubPath,
+                          ),
+                        ),
+                      );
+                    }
+                  },
                 );
-              } else {
-                final dirName = dirs[i - notes.length];
-                final newSubPath =
-                    subPath.isEmpty ? dirName : '$subPath/$dirName';
-                return Card(
-                  child: ListTile(
-                    leading: const Icon(Icons.folder_outlined),
-                    title: Text(
-                      dirName,
-                      style: const TextStyle(fontWeight: FontWeight.w500),
-                    ),
-                    onTap: () => context.push(
-                      '/project/$projectId/notes',
-                      extra: newSubPath,
-                    ),
-                  ),
-                );
-              }
-            },
-          );
-        },
+              },
+            ),
+          ),
+        ],
       ),
     );
   }
 
-  void _showNoteOptions(BuildContext context, WidgetRef ref, note) {
+  void _showNoteOptions(BuildContext context, note) {
     showModalBottomSheet(
       context: context,
       builder: (ctx) => SafeArea(
@@ -156,7 +218,7 @@ class NoteListPage extends ConsumerWidget {
               title: const Text('重命名文件'),
               onTap: () {
                 Navigator.pop(ctx);
-                _showRenameDialog(context, ref, note);
+                _showRenameDialog(context, note);
               },
             ),
             ListTile(
@@ -165,7 +227,7 @@ class NoteListPage extends ConsumerWidget {
                   const Text('删除笔记', style: TextStyle(color: Colors.red)),
               onTap: () {
                 Navigator.pop(ctx);
-                _confirmDelete(context, ref, note);
+                _confirmDelete(context, note);
               },
             ),
           ],
@@ -174,7 +236,7 @@ class NoteListPage extends ConsumerWidget {
     );
   }
 
-  void _showRenameDialog(BuildContext context, WidgetRef ref, note) {
+  void _showRenameDialog(BuildContext context, note) {
     final controller = TextEditingController(
       text: p.basenameWithoutExtension(note.filePath),
     );
@@ -191,14 +253,17 @@ class NoteListPage extends ConsumerWidget {
         ),
         actions: [
           TextButton(
-              onPressed: () => Navigator.pop(ctx), child: const Text('取消')),
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('取消')),
           TextButton(
             onPressed: () async {
               final newName = controller.text.trim();
               if (newName.isEmpty) return;
               Navigator.pop(ctx);
               await ref
-                  .read(noteListProvider((projectId, subPath)).notifier)
+                  .read(noteListProvider(
+                          (widget.projectId, widget.subPath))
+                      .notifier)
                   .renameNote(note, newName);
             },
             child: const Text('确定'),
@@ -208,7 +273,7 @@ class NoteListPage extends ConsumerWidget {
     );
   }
 
-  void _confirmDelete(BuildContext context, WidgetRef ref, note) {
+  void _confirmDelete(BuildContext context, note) {
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -216,13 +281,16 @@ class NoteListPage extends ConsumerWidget {
         content: Text('确定删除「${note.title}」？此操作不可撤销。'),
         actions: [
           TextButton(
-              onPressed: () => Navigator.pop(ctx), child: const Text('取消')),
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('取消')),
           TextButton(
             style: TextButton.styleFrom(foregroundColor: Colors.red),
             onPressed: () async {
               Navigator.pop(ctx);
               await ref
-                  .read(noteListProvider((projectId, subPath)).notifier)
+                  .read(noteListProvider(
+                          (widget.projectId, widget.subPath))
+                      .notifier)
                   .deleteNote(note);
             },
             child: const Text('删除'),
@@ -232,39 +300,7 @@ class NoteListPage extends ConsumerWidget {
     );
   }
 
-  void _showCreateMenu(BuildContext context, WidgetRef ref) {
-    showModalBottomSheet(
-      context: context,
-      builder: (ctx) => SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            ListTile(
-              leading: const Icon(Icons.note_add_outlined),
-              title: const Text('笔记'),
-              onTap: () {
-                Navigator.pop(ctx);
-                context.push(
-                  '/project/$projectId/notes/edit',
-                  extra: (subPath, null),
-                );
-              },
-            ),
-            ListTile(
-              leading: const Icon(Icons.create_new_folder_outlined),
-              title: const Text('文件夹'),
-              onTap: () {
-                Navigator.pop(ctx);
-                _showCreateDirDialog(context, ref);
-              },
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  void _showCreateDirDialog(BuildContext context, WidgetRef ref) {
+  void _showCreateDirDialog(BuildContext context) {
     final controller = TextEditingController();
     final formKey = GlobalKey<FormState>();
     final validPattern = RegExp(r'^[a-zA-Z0-9_\-.]+$');
@@ -291,14 +327,17 @@ class NoteListPage extends ConsumerWidget {
         ),
         actions: [
           TextButton(
-              onPressed: () => Navigator.pop(ctx), child: const Text('取消')),
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('取消')),
           TextButton(
             onPressed: () async {
               if (!formKey.currentState!.validate()) return;
               final name = controller.text.trim();
               Navigator.pop(ctx);
               await ref
-                  .read(dirListProvider((projectId, subPath)).notifier)
+                  .read(dirListProvider(
+                          (widget.projectId, widget.subPath))
+                      .notifier)
                   .createDir(name);
             },
             child: const Text('创建'),
