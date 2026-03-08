@@ -1,3 +1,4 @@
+import 'dart:developer' as dev;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -108,6 +109,8 @@ class ProjectListPage extends ConsumerWidget {
                 value: _ProjectAction.rename, child: Text('重命名')),
             PopupMenuItem(
                 value: _ProjectAction.delete, child: Text('删除')),
+            PopupMenuItem(
+                value: _ProjectAction.setting, child: Text('设置')),
           ],
         ),
         onTap: () {
@@ -159,6 +162,8 @@ class ProjectListPage extends ConsumerWidget {
         _showRenameDialog(context, ref, project);
       case _ProjectAction.delete:
         _showSoftDeleteConfirm(context, ref, project);
+      case _ProjectAction.setting:
+        _showSettingsDialog(context, ref, project);
       default:
         break;
     }
@@ -332,6 +337,131 @@ class ProjectListPage extends ConsumerWidget {
       ),
     );
   }
+
+  void _showSettingsDialog(
+      BuildContext context, WidgetRef ref, Project project) {
+    final nameCtrl = TextEditingController(text: project.gitUserName ?? '');
+    final emailCtrl = TextEditingController(text: project.gitUserEmail ?? '');
+    final remoteCtrl = TextEditingController(text: project.remoteUrl ?? '');
+    final tokenCtrl = TextEditingController(text: project.gitToken ?? '');
+
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('项目设置'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (!project.isGitRepo)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 12),
+                child: OutlinedButton.icon(
+                  icon: const Icon(Icons.source),
+                  label: const Text('初始化 Git 仓库'),
+                  onPressed: () async {
+                    Navigator.pop(ctx);
+                    try {
+                      await ref
+                          .read(projectListProvider.notifier)
+                          .initGit(project);
+                      if (context.mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(content: Text('Git 初始化成功')),
+                        );
+                      }
+                    } catch (e, st) {
+                      dev.log(
+                        'initGit 失败: $e',
+                        name: 'ProjectListPage',
+                        level: 1000,
+                        error: e,
+                        stackTrace: st,
+                      );
+                      if (context.mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                          content: Text('Git 初始化失败: $e'),
+                          backgroundColor:
+                              Theme.of(context).colorScheme.error,
+                        ));
+                      }
+                    }
+                  },
+                ),
+              ),
+            TextField(
+              controller: nameCtrl,
+              decoration: const InputDecoration(labelText: 'Git 用户名'),
+            ),
+            TextField(
+              controller: emailCtrl,
+              decoration: const InputDecoration(labelText: 'Git 邮箱'),
+            ),
+            TextField(
+              controller: remoteCtrl,
+              decoration:
+                  const InputDecoration(labelText: 'Remote URL（可选）'),
+            ),
+            TextField(
+              controller: tokenCtrl,
+              decoration: const InputDecoration(
+                labelText: 'Access Token（Push/Pull 认证）',
+                helperText: '如 GitHub Personal Access Token',
+              ),
+              obscureText: true,
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx), child: const Text('取消')),
+          FilledButton(
+            onPressed: () async {
+              Navigator.pop(ctx);
+              final remoteUrl = remoteCtrl.text.trim();
+              final updated = project.copyWith(
+                gitUserName: nameCtrl.text.trim().isEmpty
+                    ? null
+                    : nameCtrl.text.trim(),
+                gitUserEmail: emailCtrl.text.trim().isEmpty
+                    ? null
+                    : emailCtrl.text.trim(),
+                remoteUrl: remoteUrl.isEmpty ? null : remoteUrl,
+                gitToken: tokenCtrl.text.trim().isEmpty
+                    ? null
+                    : tokenCtrl.text.trim(),
+              );
+              await ref
+                  .read(projectListProvider.notifier)
+                  .updateProject(updated);
+
+              if (remoteUrl.isNotEmpty) {
+                try {
+                  await ref
+                      .read(projectListProvider.notifier)
+                      .setRemote(updated, remoteUrl);
+                } catch (e, st) {
+                  dev.log(
+                    'setRemote 失败: $e',
+                    name: 'ProjectListPage',
+                    level: 1000,
+                    error: e,
+                    stackTrace: st,
+                  );
+                  if (context.mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                      content: Text('git remote 设置失败: $e'),
+                      backgroundColor: Theme.of(context).colorScheme.error,
+                    ));
+                  }
+                }
+              }
+            },
+            child: const Text('保存'),
+          ),
+        ],
+      ),
+    );
+  }
 }
 
-enum _ProjectAction { open, rename, delete, purge }
+enum _ProjectAction { open, rename, delete, setting, purge }
