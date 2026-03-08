@@ -54,14 +54,16 @@ class _NoteEditPageState extends ConsumerState<NoteEditPage> {
     setState(() => _saving = true);
     try {
       if (_isEditing) {
-        await ref.read(noteListProvider(widget.projectId).notifier).updateNote(
+        await ref
+            .read(noteListProvider((widget.projectId, '')).notifier)
+            .updateNote(
               widget.existingNote!,
               title: title,
               content: content,
             );
       } else {
         await ref
-            .read(noteListProvider(widget.projectId).notifier)
+            .read(noteListProvider((widget.projectId, '')).notifier)
             .createNote(title: title, content: content);
       }
       if (mounted) context.pop();

@@ -118,6 +118,31 @@ class NoteRepository {
     return note.copyWith(filePath: newFilePath);
   }
 
+  /// 在指定路径下创建子目录
+  Future<void> createDir({
+    required String projectPath,
+    required String dirName,
+  }) async {
+    final dir = Directory(p.join(projectPath, dirName));
+    await dir.create(recursive: true);
+  }
+
+  /// 列出项目目录下所有非隐藏子目录（按目录名降序）
+  Future<List<String>> listDirs({required String projectPath}) async {
+    final dir = Directory(projectPath);
+    if (!await dir.exists()) return [];
+
+    final dirs = await dir
+        .list()
+        .where((e) => e is Directory && !p.basename(e.path).startsWith('.'))
+        .cast<Directory>()
+        .toList();
+
+    final names = dirs.map((d) => p.basename(d.path)).toList();
+    names.sort((a, b) => b.compareTo(a));
+    return names;
+  }
+
   /// 删除笔记文件
   Future<void> deleteNote(Note note) async {
     final file = File(note.filePath);

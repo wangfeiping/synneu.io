@@ -1,5 +1,6 @@
 import 'dart:developer' as dev;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:path/path.dart' as p;
 import '../data/note_repository.dart';
 import '../domain/note.dart';
 import '../../project/presentation/project_provider.dart';
@@ -8,20 +9,56 @@ final noteRepositoryProvider = Provider<NoteRepository>(
   (_) => NoteRepository(),
 );
 
-final noteListProvider =
-    AsyncNotifierProvider.family<NoteListNotifier, List<Note>, String>(
+/// family key: (projectId, subPath)，subPath 为空字符串表示项目根目录
+final noteListProvider = AsyncNotifierProvider.family<
+    NoteListNotifier, List<Note>, (String, String)>(
   NoteListNotifier.new,
 );
 
-class NoteListNotifier extends FamilyAsyncNotifier<List<Note>, String> {
+final dirListProvider = AsyncNotifierProvider.family<
+    DirListNotifier, List<String>, (String, String)>(
+  DirListNotifier.new,
+);
+
+class DirListNotifier
+    extends FamilyAsyncNotifier<List<String>, (String, String)> {
   @override
-  Future<List<Note>> build(String projectId) async {
+  Future<List<String>> build((String, String) arg) async {
     final projects = await ref.watch(projectListProvider.future);
-    final project = projects.where((p) => p.id == projectId).firstOrNull;
+    final project = projects.where((p) => p.id == arg.$1).firstOrNull;
     if (project == null) return [];
+    final dirPath =
+        arg.$2.isEmpty ? project.path : p.join(project.path, arg.$2);
+    return ref.read(noteRepositoryProvider).listDirs(projectPath: dirPath);
+  }
+
+  Future<void> createDir(String dirName) async {
+    final projects = await ref.read(projectListProvider.future);
+    final project = projects.where((p) => p.id == arg.$1).firstOrNull;
+    if (project == null) return;
+    final dirPath =
+        arg.$2.isEmpty ? project.path : p.join(project.path, arg.$2);
+    await ref
+        .read(noteRepositoryProvider)
+        .createDir(projectPath: dirPath, dirName: dirName);
+    final current = state.valueOrNull ?? [];
+    final updated = [...current, dirName]..sort((a, b) => b.compareTo(a));
+    state = AsyncData(updated);
+  }
+}
+
+class NoteListNotifier
+    extends FamilyAsyncNotifier<List<Note>, (String, String)> {
+  @override
+  Future<List<Note>> build((String, String) arg) async {
+    final projects = await ref.watch(projectListProvider.future);
+    final project = projects.where((p) => p.id == arg.$1).firstOrNull;
+    if (project == null) return [];
+    final dirPath =
+        arg.$2.isEmpty ? project.path : p.join(project.path, arg.$2);
     return ref.read(noteRepositoryProvider).listNotes(
-          projectId: projectId,
-          projectPath: project.path,
+          projectId: arg.$1,
+          projectPath: dirPath,
         );
   }
 
@@ -30,16 +67,15 @@ class NoteListNotifier extends FamilyAsyncNotifier<List<Note>, String> {
     required String content,
   }) async {
     final projects = await ref.read(projectListProvider.future);
-    final project = projects.where((p) => p.id == arg).first;
+    final project = projects.where((p) => p.id == arg.$1).first;
     final repo = ref.read(noteRepositoryProvider);
     final note = await repo.createNote(
       title: title,
       content: content,
-      projectId: arg,
+      projectId: arg.$1,
       projectPath: project.path,
     );
 
-    // Auto git add — 失败时记录日志，不影响笔记保存结果
     try {
       await ref.read(projectRepositoryProvider).gitAdd(project, note.filePath);
     } catch (e, st) {
@@ -60,10 +96,9 @@ class NoteListNotifier extends FamilyAsyncNotifier<List<Note>, String> {
     final repo = ref.read(noteRepositoryProvider);
     final updated = await repo.updateNote(note, title: title, content: content);
 
-    // Auto git add — 失败时记录日志，不影响笔记保存结果
     try {
       final projects = await ref.read(projectListProvider.future);
-      final project = projects.where((p) => p.id == arg).firstOrNull;
+      final project = projects.where((p) => p.id == arg.$1).firstOrNull;
       if (project != null) {
         await ref
             .read(projectRepositoryProvider)
@@ -80,18 +115,20 @@ class NoteListNotifier extends FamilyAsyncNotifier<List<Note>, String> {
     }
 
     state = AsyncData(
-      (state.valueOrNull ?? []).map((n) => n.id == note.id ? updated : n).toList(),
+      (state.valueOrNull ?? [])
+          .map((n) => n.id == note.id ? updated : n)
+          .toList(),
     );
     return updated;
   }
 
   Future<Note> renameNote(Note note, String newFileName) async {
-    final renamed = await ref.read(noteRepositoryProvider).renameNote(note, newFileName);
+    final renamed =
+        await ref.read(noteRepositoryProvider).renameNote(note, newFileName);
 
-    // 暂存重命名：旧路径 rm，新路径 add
     try {
       final projects = await ref.read(projectListProvider.future);
-      final project = projects.where((p) => p.id == arg).firstOrNull;
+      final project = projects.where((p) => p.id == arg.$1).firstOrNull;
       if (project != null) {
         final gitRepo = ref.read(projectRepositoryProvider);
         await gitRepo.gitRemove(project, note.filePath);
@@ -108,7 +145,9 @@ class NoteListNotifier extends FamilyAsyncNotifier<List<Note>, String> {
     }
 
     state = AsyncData(
-      (state.valueOrNull ?? []).map((n) => n.id == note.id ? renamed : n).toList(),
+      (state.valueOrNull ?? [])
+          .map((n) => n.id == note.id ? renamed : n)
+          .toList(),
     );
     return renamed;
   }
@@ -116,12 +155,13 @@ class NoteListNotifier extends FamilyAsyncNotifier<List<Note>, String> {
   Future<void> deleteNote(Note note) async {
     await ref.read(noteRepositoryProvider).deleteNote(note);
 
-    // 暂存删除
     try {
       final projects = await ref.read(projectListProvider.future);
-      final project = projects.where((p) => p.id == arg).firstOrNull;
+      final project = projects.where((p) => p.id == arg.$1).firstOrNull;
       if (project != null) {
-        await ref.read(projectRepositoryProvider).gitRemove(project, note.filePath);
+        await ref
+            .read(projectRepositoryProvider)
+            .gitRemove(project, note.filePath);
       }
     } catch (e, st) {
       dev.log(

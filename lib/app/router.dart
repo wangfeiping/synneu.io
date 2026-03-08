@@ -23,6 +23,7 @@ final router = GoRouter(
           path: 'notes',
           builder: (_, state) => NoteListPage(
             projectId: state.pathParameters['projectId']!,
+            subPath: state.extra as String? ?? '',
           ),
           routes: [
             GoRoute(
