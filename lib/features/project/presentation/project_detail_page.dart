@@ -40,10 +40,13 @@ class _ProjectDetailView extends ConsumerStatefulWidget {
   ConsumerState<_ProjectDetailView> createState() => _ProjectDetailViewState();
 }
 
+enum _GitPanelMode { defaultMode, abbrev, verbose }
+
 class _ProjectDetailViewState extends ConsumerState<_ProjectDetailView> {
   String _gitOutput = '';
   bool _gitOutputIsError = false;
   bool _menuOpen = false;
+  _GitPanelMode _gitMode = _GitPanelMode.defaultMode;
 
   void _setOutput(String text, {bool isError = false}) {
     setState(() {
@@ -92,56 +95,91 @@ class _ProjectDetailViewState extends ConsumerState<_ProjectDetailView> {
           // Git 操作面板
           if (project.isGitRepo) ...[
             Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              child: Text('Git 操作',
-                  style: Theme.of(context).textTheme.titleMedium),
-            ),
-            const SizedBox(height: 8),
-            SingleChildScrollView(
-              scrollDirection: Axis.horizontal,
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              child: Row(
+              padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+              child: Wrap(
+                spacing: 8,
+                runSpacing: 8,
                 children: [
+                  // Git 操作：三态循环按钮，始终显示文字
+                  _GitButton(
+                    icon: Icons.terminal,
+                    label: _gitMode == _GitPanelMode.verbose ? 'Git 操作' : 'Git',
+                    showLabel: true,
+                    dimmed: _gitMode == _GitPanelMode.defaultMode,
+                    onTap: () => setState(() {
+                      _gitMode = _GitPanelMode
+                          .values[(_gitMode.index + 1) % _GitPanelMode.values.length];
+                    }),
+                  ),
+                  // Status
                   _GitButton(
                     icon: Icons.history,
                     label: 'Status',
-                    onTap: () => _runGitOp('git status', () async {
-                      final out = await ref
-                          .read(projectListProvider.notifier)
-                          .gitStatus(project);
-                      return out.isEmpty ? '(无变更)' : out;
-                    }),
+                    showLabel: _gitMode == _GitPanelMode.verbose,
+                    dimmed: _gitMode == _GitPanelMode.defaultMode,
+                    onTap: _gitMode == _GitPanelMode.defaultMode
+                        ? null
+                        : () => _runGitOp('git status', () async {
+                              final out = await ref
+                                  .read(projectListProvider.notifier)
+                                  .gitStatus(project);
+                              return out.isEmpty ? '(无变更)' : out;
+                            }),
                   ),
-                  const SizedBox(width: 8),
+                  // Commit
                   _GitButton(
                     icon: Icons.commit,
                     label: 'Commit',
-                    onTap: () => _showCommitDialog(context, ref, project),
+                    showLabel: _gitMode == _GitPanelMode.verbose,
+                    dimmed: _gitMode == _GitPanelMode.defaultMode,
+                    onTap: _gitMode == _GitPanelMode.defaultMode
+                        ? null
+                        : () => _showCommitDialog(context, ref, project),
                   ),
-                  const SizedBox(width: 8),
+                  // Push
                   _GitButton(
                     icon: Icons.cloud_upload,
                     label: 'Push',
-                    onTap: () => _runGitOp('git push', () =>
-                        ref.read(projectListProvider.notifier).gitPush(project)),
+                    showLabel: _gitMode == _GitPanelMode.verbose,
+                    dimmed: _gitMode == _GitPanelMode.defaultMode,
+                    onTap: _gitMode == _GitPanelMode.defaultMode
+                        ? null
+                        : () => _runGitOp('git push', () =>
+                              ref.read(projectListProvider.notifier).gitPush(project)),
                   ),
-                  const SizedBox(width: 8),
+                  // Pull
                   _GitButton(
                     icon: Icons.cloud_download,
                     label: 'Pull',
-                    onTap: () => _runGitOp('git pull', () =>
-                        ref.read(projectListProvider.notifier).gitPull(project)),
+                    showLabel: _gitMode == _GitPanelMode.verbose,
+                    dimmed: _gitMode == _GitPanelMode.defaultMode,
+                    onTap: _gitMode == _GitPanelMode.defaultMode
+                        ? null
+                        : () => _runGitOp('git pull', () =>
+                              ref.read(projectListProvider.notifier).gitPull(project)),
                   ),
-                  const SizedBox(width: 8),
+                  // Log
                   _GitButton(
                     icon: Icons.list_alt,
                     label: 'Log',
-                    onTap: () => _runGitOp('git log', () async {
-                      final out = await ref
-                          .read(projectListProvider.notifier)
-                          .gitLog(project);
-                      return out.isEmpty ? '(暂无提交)' : out;
-                    }),
+                    showLabel: _gitMode == _GitPanelMode.verbose,
+                    dimmed: _gitMode == _GitPanelMode.defaultMode,
+                    onTap: _gitMode == _GitPanelMode.defaultMode
+                        ? null
+                        : () => _runGitOp('git log', () async {
+                              final out = await ref
+                                  .read(projectListProvider.notifier)
+                                  .gitLog(project);
+                              return out.isEmpty ? '(暂无提交)' : out;
+                            }),
+                  ),
+                  // Sync：默认态正常，其他态灰色不可用
+                  _GitButton(
+                    icon: Icons.sync,
+                    label: 'Sync',
+                    showLabel: true,
+                    dimmed: _gitMode != _GitPanelMode.defaultMode,
+                    onTap: _gitMode == _GitPanelMode.defaultMode ? () {} : null,
                   ),
                 ],
               ),
@@ -491,20 +529,43 @@ class _ProjectDetailViewState extends ConsumerState<_ProjectDetailView> {
 class _GitButton extends StatelessWidget {
   final IconData icon;
   final String label;
-  final VoidCallback onTap;
+  final VoidCallback? onTap;
+  final bool showLabel;
+  final bool dimmed;
 
   const _GitButton({
     required this.icon,
     required this.label,
-    required this.onTap,
+    this.onTap,
+    this.showLabel = true,
+    this.dimmed = false,
   });
 
   @override
   Widget build(BuildContext context) {
-    return OutlinedButton.icon(
-      icon: Icon(icon, size: 16),
-      label: Text(label),
-      onPressed: onTap,
-    );
+    final style = dimmed
+        ? OutlinedButton.styleFrom(
+            foregroundColor: Colors.black,
+            disabledForegroundColor: Colors.black,
+            backgroundColor: Colors.grey.shade800,
+            disabledBackgroundColor: Colors.grey.shade800,
+            side: const BorderSide(color: Colors.black),
+          )
+        : null;
+
+    if (showLabel) {
+      return OutlinedButton.icon(
+        icon: Icon(icon, size: 16),
+        label: Text(label),
+        onPressed: onTap,
+        style: style,
+      );
+    } else {
+      return OutlinedButton(
+        onPressed: onTap,
+        style: style,
+        child: Icon(icon, size: 16),
+      );
+    }
   }
 }
