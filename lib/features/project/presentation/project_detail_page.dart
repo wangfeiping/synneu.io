@@ -91,7 +91,6 @@ class _ProjectDetailViewState extends ConsumerState<_ProjectDetailView> {
         children: [
           // Git 操作面板
           if (project.isGitRepo) ...[
-            const Divider(),
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 16),
               child: Text('Git 操作',
