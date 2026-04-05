@@ -49,6 +49,11 @@ class _OpenClawHomePageState extends ConsumerState<OpenClawHomePage> {
 
     return Scaffold(
       appBar: AppBar(
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back),
+          tooltip: '返回',
+          onPressed: () => context.go('/'),
+        ),
         title: const Text('OpenClaw AI'),
         actions: [
           _ConnectionIndicator(state: connState),
