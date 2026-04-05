@@ -5,6 +5,8 @@ import 'package:go_router/go_router.dart';
 import '../../../shared/widgets/loading_widget.dart';
 import '../domain/project.dart';
 import 'project_provider.dart';
+import '../../openclaw/presentation/openclaw_provider.dart';
+import '../../openclaw/domain/gateway_connection.dart';
 
 class ProjectListPage extends ConsumerWidget {
   const ProjectListPage({super.key});
@@ -18,6 +20,7 @@ class ProjectListPage extends ConsumerWidget {
         title: const Text('Synneu'),
         centerTitle: false,
         actions: [
+          _AiNavButton(),
           IconButton(
             icon: const Icon(Icons.add),
             tooltip: '新建项目',
@@ -465,3 +468,41 @@ class ProjectListPage extends ConsumerWidget {
 }
 
 enum _ProjectAction { open, rename, delete, setting, purge }
+
+/// AppBar 右上角的 AI 入口按钮，显示 Gateway 连接状态指示点。
+class _AiNavButton extends ConsumerWidget {
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final connState =
+        ref.watch(gatewayWsServiceProvider.select((s) => s.state));
+    final dotColor = switch (connState) {
+      GatewayConnState.connected => Colors.green,
+      GatewayConnState.connecting => Colors.orange,
+      GatewayConnState.error => Colors.red,
+      GatewayConnState.disconnected => Colors.grey,
+    };
+    return Stack(
+      clipBehavior: Clip.none,
+      children: [
+        IconButton(
+          icon: const Icon(Icons.smart_toy_outlined),
+          tooltip: 'OpenClaw AI',
+          onPressed: () => context.push('/openclaw'),
+        ),
+        Positioned(
+          right: 6,
+          top: 6,
+          child: Container(
+            width: 8,
+            height: 8,
+            decoration: BoxDecoration(
+              color: dotColor,
+              shape: BoxShape.circle,
+              border: Border.all(color: Colors.white, width: 1),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}

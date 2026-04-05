@@ -5,10 +5,15 @@ import '../features/note/presentation/note_edit_page.dart';
 import '../features/note/presentation/note_list_page.dart';
 import '../features/project/presentation/project_detail_page.dart';
 import '../features/project/presentation/project_list_page.dart';
+import '../features/openclaw/presentation/openclaw_home_page.dart';
+import '../features/openclaw/presentation/gateway_setup_page.dart';
+import '../features/openclaw/presentation/chat/chat_detail_page.dart';
+import '../features/openclaw/presentation/agent/agent_result_page.dart';
 
 final router = GoRouter(
   initialLocation: '/',
   routes: [
+    // ── 笔记 / 项目（原有） ──────────────────────────────────────
     GoRoute(
       path: '/',
       builder: (_, __) => const ProjectListPage(),
@@ -41,6 +46,28 @@ final router = GoRouter(
           ],
         ),
       ],
+    ),
+
+    // ── OpenClaw AI（新增） ───────────────────────────────────────
+    GoRoute(
+      path: '/openclaw',
+      builder: (_, __) => const OpenClawHomePage(),
+    ),
+    GoRoute(
+      path: '/openclaw/setup',
+      builder: (_, __) => const GatewaySetupPage(),
+    ),
+    GoRoute(
+      path: '/openclaw/chat/:sessionKey',
+      builder: (_, state) => ChatDetailPage(
+        sessionKey: Uri.decodeComponent(state.pathParameters['sessionKey']!),
+      ),
+    ),
+    GoRoute(
+      path: '/openclaw/agent/:runId',
+      builder: (_, state) => AgentResultPage(
+        runId: state.pathParameters['runId']!,
+      ),
     ),
   ],
   errorBuilder: (context, state) => Scaffold(

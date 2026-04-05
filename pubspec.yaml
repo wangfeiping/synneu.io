@@ -45,6 +45,12 @@ dependencies:
   # HTTP（未来 ZeroClaw AI 接口）
   http: ^1.2.2
 
+  # WebSocket（OpenClaw Gateway 协议通信）
+  web_socket_channel: ^3.0.1
+
+  # Markdown 渲染（AI 聊天消息）
+  flutter_markdown: ^0.7.4
+
 dev_dependencies:
   flutter_test:
     sdk: flutter
