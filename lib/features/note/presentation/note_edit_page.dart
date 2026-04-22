@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 import '../domain/note.dart';
 import 'note_provider.dart';
 import '../../voice/presentation/voice_input_widget.dart';
+import '../../tts/presentation/tts_button_widget.dart';
 
 class NoteEditPage extends ConsumerStatefulWidget {
   final String projectId;
@@ -93,6 +94,13 @@ class _NoteEditPageState extends ConsumerState<NoteEditPage> {
       appBar: AppBar(
         title: Text(_isEditing ? '编辑笔记' : '新建笔记'),
         actions: [
+          TtsButtonWidget(
+            getText: () {
+              final title = _titleCtrl.text.trim();
+              final content = _contentCtrl.text.trim();
+              return title.isEmpty ? content : '$title\n\n$content';
+            },
+          ),
           if (_saving)
             const Padding(
               padding: EdgeInsets.all(16),

@@ -51,6 +51,15 @@ dependencies:
   # Markdown 渲染（AI 聊天消息）
   flutter_markdown: ^0.7.4
 
+  # 本地神经网络 TTS（sherpa-onnx VITS 中文模型）
+  sherpa_onnx: ^1.10.32
+
+  # TTS 音频播放
+  audioplayers: ^6.1.1
+
+  # tar.bz2 解压（TTS 模型首次下载后解压）
+  archive: ^3.6.1
+
 dev_dependencies:
   flutter_test:
     sdk: flutter
