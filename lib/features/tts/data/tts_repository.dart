@@ -9,13 +9,33 @@ import 'package:http/http.dart' as http;
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 import 'package:sherpa_onnx/sherpa_onnx.dart' as sherpa;
+import 'tts_foreground_service.dart';
 
 void _log(String msg, {bool warn = false}) {
   debugPrint('[TTS] $msg'); // 出现在 flutter run 终端
   dev.log(msg, name: 'TtsRepository', level: warn ? 900 : 0);
 }
 
-// ── 顶层函数：在 compute isolate 中执行 TTS 合成 ─────────────────────────────
+// ── 顶层函数：将长文本按句子边界切分为若干短段 ────────────────────────────────
+List<String> _splitIntoChunks(String text, {int maxLen = 120}) {
+  final result = <String>[];
+  final re = RegExp(r'(?<=[。！？\n…])');
+  final sentences = text.split(re);
+  final buf = StringBuffer();
+  for (final s in sentences) {
+    if (buf.length + s.length > maxLen && buf.isNotEmpty) {
+      final chunk = buf.toString().trim();
+      if (chunk.isNotEmpty) result.add(chunk);
+      buf.clear();
+    }
+    buf.write(s);
+  }
+  final last = buf.toString().trim();
+  if (last.isNotEmpty) result.add(last);
+  return result;
+}
+
+// ── 顶层函数：在 compute isolate 中执行 TTS 合成（分段推理以控制峰值内存）──────
 Map<String, dynamic> _generateAudioInBackground(Map<String, String> args) {
   sherpa.initBindings();
   final config = sherpa.OfflineTtsConfig(
@@ -29,14 +49,32 @@ Map<String, dynamic> _generateAudioInBackground(Map<String, String> args) {
       debug: false,
       provider: 'cpu',
     ),
-    maxNumSenetences: 100,
+    maxNumSenetences: 1,  // 关闭内部分句，由我们自己分段控制粒度
   );
   final tts = sherpa.OfflineTts(config);
-  final audio = tts.generate(text: args['text']!, sid: 0, speed: 1.0);
-  final samples = Float32List.fromList(audio.samples); // 独立拷贝，free 后仍有效
-  final sampleRate = audio.sampleRate;
+  final sampleRate = tts.sampleRate;
+
+  final chunks = _splitIntoChunks(args['text']!);
+  debugPrint('[TTS] 共 ${chunks.length} 段');
+
+  final parts = <Float32List>[];
+  int totalLen = 0;
+  for (final chunk in chunks) {
+    final audio = tts.generate(text: chunk, sid: 0, speed: 1.0);
+    final copy = Float32List.fromList(audio.samples);
+    parts.add(copy);
+    totalLen += copy.length;
+  }
   tts.free();
-  return {'samples': samples, 'sampleRate': sampleRate};
+
+  // 合并所有分段音频
+  final combined = Float32List(totalLen);
+  int offset = 0;
+  for (final part in parts) {
+    combined.setAll(offset, part);
+    offset += part.length;
+  }
+  return {'samples': combined, 'sampleRate': sampleRate};
 }
 
 // ── 顶层函数：在 compute isolate 中执行 BZip2 解压 + tar 解包 ──────────────
@@ -67,10 +105,10 @@ class TtsRepository {
       'https://github.com/k2-fsa/sherpa-onnx/releases/download/'
       'tts-models/$_modelName.tar.bz2';
 
-  // model.onnx 至少 10 MB，小于此值视为损坏
-  static const _minModelBytes = 10 * 1024 * 1024;
+  // int8 量化模型（~30 MB），小于此值视为损坏
+  static const _modelFile = 'vits-aishell3.int8.onnx';
+  static const _minModelBytes = 5 * 1024 * 1024;
 
-  sherpa.OfflineTts? _tts;
   final _player = AudioPlayer();
   StreamSubscription? _completeSub;
   bool _initialized = false;
@@ -81,11 +119,34 @@ class TtsRepository {
     return p.join(base.path, 'sherpa_tts', _modelName);
   }
 
-  bool get isReady => _initialized && _tts != null;
+  bool get isReady => _initialized;
+
+  // ── 缓存工具 ──────────────────────────────────────────────────────────────
+
+  static String _textHash(String text) {
+    var h = 0;
+    for (final c in text.codeUnits) {
+      h = (h * 31 + c) & 0xFFFFFFFF;
+    }
+    return h.toRadixString(16).padLeft(8, '0');
+  }
+
+  Future<String> _audioCachePath(String text) async {
+    final base = await getApplicationDocumentsDirectory();
+    final dir = p.join(base.path, 'sherpa_tts', 'audio_cache');
+    await Directory(dir).create(recursive: true);
+    return p.join(dir, '${_textHash(text)}.wav');
+  }
+
+  Future<bool> hasCachedAudio(String text) async {
+    final path = await _audioCachePath(_stripMarkdown(text));
+    final f = File(path);
+    return f.existsSync() && f.lengthSync() > 0;
+  }
 
   Future<bool> isModelDownloaded() async {
     final dir = await _modelDirPath;
-    final modelFile = File(p.join(dir, 'vits-aishell3.onnx'));
+    final modelFile = File(p.join(dir, _modelFile));
     final tokensFile = File(p.join(dir, 'tokens.txt'));
     return modelFile.existsSync() &&
         modelFile.lengthSync() >= _minModelBytes &&
@@ -210,9 +271,9 @@ class TtsRepository {
 
     // ── 步骤 3：验证关键文件 ─────────────────────────────────────────────────
     final dir = await _modelDirPath;
-    final modelFile = File(p.join(dir, 'vits-aishell3.onnx'));
+    final modelFile = File(p.join(dir, _modelFile));
     final modelSize = modelFile.existsSync() ? modelFile.lengthSync() : 0;
-    _log('vits-aishell3.onnx 大小: ${(modelSize / 1024 / 1024).toStringAsFixed(2)} MB');
+    _log('$_modelFile 大小: ${(modelSize / 1024 / 1024).toStringAsFixed(2)} MB');
 
     if (!await isModelDownloaded()) {
       await deleteModelFiles();
@@ -235,12 +296,12 @@ class TtsRepository {
     sherpa.initBindings();
 
     final dir = await _modelDirPath;
-    _log('初始化 TTS，模型目录: $dir');
+    _log('验证 TTS 模型，目录: $dir');
 
     final config = sherpa.OfflineTtsConfig(
       model: sherpa.OfflineTtsModelConfig(
         vits: sherpa.OfflineTtsVitsModelConfig(
-          model: p.join(dir, 'vits-aishell3.onnx'),
+          model: p.join(dir, _modelFile),
           lexicon: p.join(dir, 'lexicon.txt'),
           tokens: p.join(dir, 'tokens.txt'),
         ),
@@ -252,7 +313,11 @@ class TtsRepository {
     );
 
     try {
-      _tts = sherpa.OfflineTts(config);
+      // 仅做一次加载验证，确认模型文件有效后立即释放。
+      // 实际合成在 compute() isolate 中按需加载，避免主 isolate 常驻 ~115 MB。
+      final probe = sherpa.OfflineTts(config);
+      _log('TTS 模型验证成功，采样率: ${probe.sampleRate}');
+      probe.free();
     } catch (e) {
       _log('initTts 失败: $e', warn: true);
       await deleteModelFiles();
@@ -260,12 +325,9 @@ class TtsRepository {
     }
 
     _initialized = true;
-    _log('TTS 初始化成功，采样率: ${_tts!.sampleRate}');
   }
 
   void reset() {
-    _tts?.free();
-    _tts = null;
     _initialized = false;
   }
 
@@ -273,8 +335,9 @@ class TtsRepository {
     String text, {
     required void Function() onComplete,
     required void Function(String error) onError,
+    bool forceRegenerate = false,
   }) async {
-    if (_tts == null) {
+    if (!_initialized) {
       onError('TTS 未初始化');
       return;
     }
@@ -291,35 +354,43 @@ class TtsRepository {
         return;
       }
 
-      _log('开始合成，文本长度: ${cleaned.length} 字（后台 isolate）');
-      final dir = await _modelDirPath;
-      final result = await compute(_generateAudioInBackground, {
-        'modelPath': p.join(dir, 'vits-aishell3.onnx'),
-        'lexiconPath': p.join(dir, 'lexicon.txt'),
-        'tokensPath': p.join(dir, 'tokens.txt'),
-        'text': cleaned,
-      });
-      final samples = result['samples'] as Float32List;
-      final sampleRate = result['sampleRate'] as int;
-      _log('合成完成，样本数: ${samples.length}, 采样率: $sampleRate');
+      final wavPath = await _audioCachePath(cleaned);
 
-      if (_cancelled) return;
+      if (!forceRegenerate && File(wavPath).existsSync() && File(wavPath).lengthSync() > 0) {
+        _log('使用缓存音频: $wavPath');
+      } else {
+        await TtsForegroundService.start('正在生成语音…');
+        _log('开始合成，文本长度: ${cleaned.length} 字（后台 isolate）');
+        final dir = await _modelDirPath;
+        final result = await compute(_generateAudioInBackground, {
+          'modelPath': p.join(dir, _modelFile),
+          'lexiconPath': p.join(dir, 'lexicon.txt'),
+          'tokensPath': p.join(dir, 'tokens.txt'),
+          'text': cleaned,
+        });
+        final samples = result['samples'] as Float32List;
+        final sampleRate = result['sampleRate'] as int;
+        _log('合成完成，样本数: ${samples.length}, 采样率: $sampleRate');
 
-      final base = await getApplicationDocumentsDirectory();
-      final wavPath = p.join(base.path, 'sherpa_tts', 'output.wav');
-      await Directory(p.dirname(wavPath)).create(recursive: true);
+        if (_cancelled) {
+          await TtsForegroundService.stop();
+          return;
+        }
 
-      sherpa.writeWave(
-        filename: wavPath,
-        samples: samples,
-        sampleRate: sampleRate,
-      );
-      _log('WAV 写入完成: $wavPath');
+        sherpa.writeWave(filename: wavPath, samples: samples, sampleRate: sampleRate);
+        _log('WAV 已缓存: $wavPath');
+      }
 
-      if (_cancelled) return;
+      if (_cancelled) {
+        await TtsForegroundService.stop();
+        return;
+      }
+
+      await TtsForegroundService.start('正在播放语音…');
 
       _completeSub = _player.onPlayerComplete.listen((_) {
         _completeSub = null;
+        TtsForegroundService.stop();
         onComplete();
       });
 
@@ -336,20 +407,29 @@ class TtsRepository {
     await _completeSub?.cancel();
     _completeSub = null;
     await _player.stop();
+    await TtsForegroundService.stop();
   }
 
   String _stripMarkdown(String text) {
+    // Markdown 结构去除
     text = text.replaceAll(RegExp(r'^#{1,6}\s+', multiLine: true), '');
     text = text.replaceAll(RegExp(r'\*{1,3}([^*\n]+)\*{1,3}'), r'$1');
     text = text.replaceAll(RegExp(r'_{1,3}([^_\n]+)_{1,3}'), r'$1');
     text = text.replaceAll(RegExp(r'!\[[^\]]*\]\([^\)]+\)'), '');
     text = text.replaceAll(RegExp(r'\[([^\]]+)\]\([^\)]+\)'), r'$1');
     text = text.replaceAll(RegExp(r'```[\s\S]*?```'), '');
-    text = text.replaceAll(RegExp(r'`([^`]+)`'), r'$1');
+    text = text.replaceAll(RegExp(r'`[^`]+`'), '');
     text = text.replaceAll(RegExp(r'^[-*_]{3,}\s*$', multiLine: true), '');
     text = text.replaceAll(RegExp(r'^>\s+', multiLine: true), '');
     text = text.replaceAll(RegExp(r'^[-*+]\s+', multiLine: true), '');
     text = text.replaceAll(RegExp(r'^\d+\.\s+', multiLine: true), '');
+    // 去除英文单词和阿拉伯数字（中文 VITS lexicon 不含这些词条，会产生 OOV）
+    text = text.replaceAll(RegExp(r'[a-zA-Z]+'), '');
+    text = text.replaceAll(RegExp(r'\d+'), '');
+    // 去除残留的非中文标点特殊字符
+    text = text.replaceAll(RegExp(r"[^\u4e00-\u9fff\u3000-\u303f\uff00-\uffef，。！？、；：""''（）【】《》…—\s]"), '');
+    // 压缩连续空白
+    text = text.replaceAll(RegExp(r'\s{2,}'), '\n');
     return text.trim();
   }
 
@@ -357,8 +437,7 @@ class TtsRepository {
     _cancelled = true;
     _completeSub?.cancel();
     _player.dispose();
-    _tts?.free();
-    _tts = null;
     _initialized = false;
+    TtsForegroundService.stop();
   }
 }

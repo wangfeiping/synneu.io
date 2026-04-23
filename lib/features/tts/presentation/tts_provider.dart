@@ -48,13 +48,16 @@ class TtsNotifier extends Notifier<TtsState> {
     }
   }
 
-  Future<void> speak(String text) async {
+  Future<bool> hasCachedAudio(String text) =>
+      ref.read(ttsRepositoryProvider).hasCachedAudio(text);
+
+  Future<void> speak(String text, {bool forceRegenerate = false}) async {
     if (!state.modelReady) return;
-    // 立即切换到 generating，给用户反馈
     state = state.copyWith(status: TtsStatus.generating);
 
     await ref.read(ttsRepositoryProvider).speak(
       text,
+      forceRegenerate: forceRegenerate,
       onComplete: () {
         if (state.isSpeaking) {
           state = state.copyWith(status: TtsStatus.ready);
@@ -65,7 +68,6 @@ class TtsNotifier extends Notifier<TtsState> {
       },
     );
 
-    // generate() + play() 启动后，若未被 stop 取消则切换到 speaking
     if (state.isGenerating) {
       state = state.copyWith(status: TtsStatus.speaking);
     }

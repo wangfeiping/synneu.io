@@ -50,6 +50,11 @@
 	<!-- 文件访问 -->
 	<key>NSDocumentsFolderUsageDescription</key>
 	<string>synneu.io 需要访问文档目录以存储笔记文件</string>
+	<!-- 后台音频播放（iOS 息屏时继续朗读） -->
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>audio</string>
+	</array>
 	<key>CADisableMinimumFrameDurationOnPhone</key>
 	<true/>
 	<key>UIApplicationSupportsIndirectInputEvents</key>

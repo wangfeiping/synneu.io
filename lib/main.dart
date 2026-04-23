@@ -7,6 +7,7 @@ import 'package:git2dart/git2dart.dart';
 import 'package:path_provider/path_provider.dart';
 import 'app/router.dart';
 import 'app/theme.dart';
+import 'features/tts/data/tts_foreground_service.dart';
 
 class _ErrorLogger extends ProviderObserver {
   @override
@@ -25,6 +26,7 @@ class _ErrorLogger extends ProviderObserver {
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  TtsForegroundService.init();
   if (Platform.isAndroid) {
     // libgit2 在 Android 上创建临时 pack 文件时依赖 HOME 环境变量。
     // Android 进程默认 HOME 为 "/" (只读根目录)，导致 fetch/push 报

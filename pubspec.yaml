@@ -60,6 +60,9 @@ dependencies:
   # tar.bz2 解压（TTS 模型首次下载后解压）
   archive: ^3.6.1
 
+  # 后台前台服务（息屏时保持 TTS 任务运行）
+  flutter_foreground_task: ^8.0.0
+
 dev_dependencies:
   flutter_test:
     sdk: flutter

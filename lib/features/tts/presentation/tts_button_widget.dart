@@ -37,7 +37,7 @@ class TtsButtonWidget extends ConsumerWidget {
       TtsStatus.ready => IconButton(
           icon: const Icon(Icons.volume_up),
           tooltip: '朗读',
-          onPressed: () => ref.read(ttsProvider.notifier).speak(getText()),
+          onPressed: () => _onPlayTapped(context, ref),
         ),
       TtsStatus.generating => Tooltip(
           message: '正在合成语音…',
@@ -62,6 +62,45 @@ class TtsButtonWidget extends ConsumerWidget {
           onPressed: () => _showErrorDialog(context, ref, tts.errorMessage),
         ),
     };
+  }
+
+  Future<void> _onPlayTapped(BuildContext context, WidgetRef ref) async {
+    final text = getText();
+    final notifier = ref.read(ttsProvider.notifier);
+    final hasCached = await notifier.hasCachedAudio(text);
+    if (!context.mounted) return;
+
+    if (!hasCached) {
+      notifier.speak(text);
+      return;
+    }
+
+    showModalBottomSheet<void>(
+      context: context,
+      builder: (ctx) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              leading: const Icon(Icons.play_circle_outline),
+              title: const Text('播放缓存语音'),
+              onTap: () {
+                Navigator.pop(ctx);
+                notifier.speak(text);
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.refresh),
+              title: const Text('重新生成'),
+              onTap: () {
+                Navigator.pop(ctx);
+                notifier.speak(text, forceRegenerate: true);
+              },
+            ),
+          ],
+        ),
+      ),
+    );
   }
 
   void _showDownloadDialog(BuildContext context, WidgetRef ref) {
